@@ -23,14 +23,18 @@ create table if not exists public.bills (
   id uuid primary key default gen_random_uuid(),
   bill_number text not null unique,
   customer_id uuid not null references public.customers (id),
-  item_type text not null check (item_type in ('gold', 'diamond')),
   bill_date date not null,
-  amount numeric(12, 2) not null check (amount >= 0),
+  gold_amount numeric(12, 2) not null default 0 check (gold_amount >= 0),
+  diamond_amount numeric(12, 2) not null default 0 check (diamond_amount >= 0),
+  gold_due_date date,
+  diamond_due_date date,
   due_date date not null,
-  amount_paid numeric(12, 2) not null default 0 check (amount_paid >= 0),
+  amount_paid_gold numeric(12, 2) not null default 0 check (amount_paid_gold >= 0),
+  amount_paid_diamond numeric(12, 2) not null default 0 check (amount_paid_diamond >= 0),
   status text not null default 'open' check (status in ('open', 'partial', 'closed')),
   created_at timestamptz not null default timezone('utc', now()),
-  created_by uuid references public.users (id) on delete set null
+  created_by uuid references public.users (id) on delete set null,
+  check ((gold_amount + diamond_amount) > 0)
 );
 
 create table if not exists public.payments (
@@ -47,12 +51,15 @@ create table if not exists public.payment_allocations (
   id uuid primary key default gen_random_uuid(),
   payment_id uuid not null references public.payments (id) on delete cascade,
   bill_id uuid not null references public.bills (id) on delete cascade,
+  allocated_to text not null check (allocated_to in ('gold', 'diamond')),
   amount_allocated numeric(12, 2) not null check (amount_allocated >= 0),
   created_at timestamptz not null default timezone('utc', now())
 );
 
 create index if not exists idx_bills_customer_id on public.bills (customer_id);
 create index if not exists idx_bills_due_date on public.bills (due_date);
+create index if not exists idx_bills_gold_due_date on public.bills (gold_due_date);
+create index if not exists idx_bills_diamond_due_date on public.bills (diamond_due_date);
 create index if not exists idx_bills_status on public.bills (status);
 create index if not exists idx_payments_customer_id on public.payments (customer_id);
 create index if not exists idx_payment_allocations_payment_id on public.payment_allocations (payment_id);
@@ -65,21 +72,40 @@ security definer
 set search_path = public
 as $$
 declare
-  credit_days integer;
+  diamond_credit_days integer;
+  gold_credit_days integer;
 begin
-  select case
-    when new.item_type = 'gold' then c.gold_credit_days
-    when new.item_type = 'diamond' then c.diamond_credit_days
-  end
-  into credit_days
+  if coalesce(new.gold_amount, 0) <= 0 and coalesce(new.diamond_amount, 0) <= 0 then
+    raise exception 'Bill must include a gold amount, diamond amount, or both.';
+  end if;
+
+  select c.gold_credit_days, c.diamond_credit_days
+  into gold_credit_days, diamond_credit_days
   from public.customers as c
   where c.id = new.customer_id;
 
-  if credit_days is null then
-    raise exception 'Unable to compute due date for customer % and item type %', new.customer_id, new.item_type;
+  if gold_credit_days is null or diamond_credit_days is null then
+    raise exception 'Unable to compute due date for customer %', new.customer_id;
   end if;
 
-  new.due_date := new.bill_date + credit_days;
+  new.gold_due_date := case
+    when coalesce(new.gold_amount, 0) > 0 then new.bill_date + gold_credit_days
+    else null
+  end;
+
+  new.diamond_due_date := case
+    when coalesce(new.diamond_amount, 0) > 0 then new.bill_date + diamond_credit_days
+    else null
+  end;
+
+  new.due_date := case
+    when new.gold_due_date is not null and new.diamond_due_date is not null then greatest(new.gold_due_date, new.diamond_due_date)
+    else coalesce(new.gold_due_date, new.diamond_due_date)
+  end;
+
+  if new.due_date is null then
+    raise exception 'Unable to compute due date for customer %', new.customer_id;
+  end if;
 
   return new;
 end;
@@ -88,7 +114,7 @@ $$;
 drop trigger if exists bills_set_due_date on public.bills;
 
 create trigger bills_set_due_date
-before insert on public.bills
+before insert or update of bill_date, customer_id, gold_amount, diamond_amount on public.bills
 for each row
 execute function public.set_bill_due_date();
 

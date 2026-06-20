@@ -81,7 +81,7 @@ export default async function PaymentAllocationPage({ searchParams }: PaymentAll
             <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
               <tr>
                 <th className="px-5 py-4">Bill number</th>
-                <th className="px-5 py-4">Type</th>
+                <th className="px-5 py-4">Applied to</th>
                 <th className="px-5 py-4">Amount allocated</th>
               </tr>
             </thead>
@@ -94,7 +94,7 @@ export default async function PaymentAllocationPage({ searchParams }: PaymentAll
                 </tr>
               ) : (
                 report.allocations.map((allocation) => (
-                  <tr key={allocation.billId} className="text-stone-700">
+                  <tr key={`${allocation.billId}-${allocation.itemType}`} className="text-stone-700">
                     <td className="px-5 py-4 font-medium text-stone-950">{allocation.billNumber}</td>
                     <td className="px-5 py-4 capitalize">{allocation.itemType}</td>
                     <td className="px-5 py-4 font-medium text-stone-950">

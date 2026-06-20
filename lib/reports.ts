@@ -1,16 +1,28 @@
 import "server-only";
 
+import {
+  billDaysOverdue,
+  billDueDateEntries,
+  billDueDateSortValue,
+  billMetals,
+  billOutstandingDiamondAmount,
+  billOutstandingGoldAmount,
+  billOutstandingTotalAmount,
+  billTotalAmount,
+} from "@/lib/bills";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type AgingBucket = "current" | "1-15" | "16-30" | "31-60" | "60+";
 
 export type OutstandingStatementRow = {
   amountOutstanding: number;
+  diamondOutstanding: number;
   billId: string;
   billNumber: string;
   daysOverdue: number;
   dueDate: string;
-  itemType: "gold" | "diamond";
+  goldOutstanding: number;
+  metalsLabel: string;
 };
 
 export type AgingCustomerRow = {
@@ -27,36 +39,41 @@ export type LedgerEntry = {
   debit: number;
   description: string;
   entryType: "bill" | "payment";
-  itemType: "gold" | "diamond" | null;
+  itemType: string | null;
   reference: string;
 };
 
 type BillReportRow = {
-  amount: number;
-  amount_paid: number;
+  amount_paid_diamond: number;
+  amount_paid_gold: number;
   bill_date: string;
   bill_number: string;
   created_at: string;
   customer_id: string;
+  diamond_amount: number;
+  diamond_due_date: string | null;
   due_date: string;
+  gold_amount: number;
+  gold_due_date: string | null;
   id: string;
-  item_type: "gold" | "diamond";
   status: "open" | "partial" | "closed";
   customers: Array<{ name: string }> | null;
 };
 
-function startOfToday() {
-  const today = new Date();
-  return new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-}
+function formatDueDateLabel(bill: BillReportRow, outstandingOnly = false) {
+  const entries = billDueDateEntries(bill, { outstandingOnly });
 
-export function calculateDaysOverdue(dueDate: string) {
-  const due = new Date(`${dueDate}T00:00:00`).getTime();
-  return Math.max(Math.floor((startOfToday() - due) / (1000 * 60 * 60 * 24)), 0);
-}
+  if (entries.length === 0 && outstandingOnly) {
+    return formatDueDateLabel(bill, false);
+  }
 
-function outstandingAmount(amount: number, amountPaid: number) {
-  return Math.max(Number(amount) - Number(amountPaid), 0);
+  if (entries.length === 0) {
+    return bill.due_date;
+  }
+
+  return entries
+    .map((entry) => `${entry.metal}: ${entry.dueDate}`)
+    .join(" / ");
 }
 
 function emptyBuckets(): Record<AgingBucket, { diamond: number; gold: number }> {
@@ -94,7 +111,7 @@ async function listOutstandingBillsBase(customerId?: string) {
   let query = supabase
     .from("bills")
     .select(
-      "id, customer_id, bill_number, item_type, bill_date, due_date, amount, amount_paid, status, created_at, customers(name)",
+      "id, customer_id, bill_number, bill_date, gold_amount, diamond_amount, gold_due_date, diamond_due_date, due_date, amount_paid_gold, amount_paid_diamond, status, created_at, customers(name)",
     )
     .in("status", ["open", "partial"]);
 
@@ -113,18 +130,30 @@ async function listOutstandingBillsBase(customerId?: string) {
 
 export async function getOutstandingStatement(customerId: string) {
   const rows = await listOutstandingBillsBase(customerId);
+  const rowsById = new Map(rows.map((bill) => [bill.id, bill]));
 
   return rows
     .map((bill) => ({
-      amountOutstanding: outstandingAmount(Number(bill.amount), Number(bill.amount_paid)),
+      amountOutstanding: billOutstandingTotalAmount(bill),
+      diamondOutstanding: billOutstandingDiamondAmount(bill),
       billId: bill.id,
       billNumber: bill.bill_number,
-      daysOverdue: calculateDaysOverdue(bill.due_date),
-      dueDate: bill.due_date,
-      itemType: bill.item_type,
+      daysOverdue: billDaysOverdue(bill),
+      dueDate: formatDueDateLabel(bill, true),
+      goldOutstanding: billOutstandingGoldAmount(bill),
+      metalsLabel: billMetals(bill).join(" / "),
     }))
     .filter((bill) => bill.amountOutstanding > 0)
-    .sort((left, right) => right.daysOverdue - left.daysOverdue || left.dueDate.localeCompare(right.dueDate));
+    .sort((left, right) => {
+      if (right.daysOverdue !== left.daysOverdue) {
+        return right.daysOverdue - left.daysOverdue;
+      }
+
+      const leftSortDate = billDueDateSortValue(rowsById.get(left.billId) as BillReportRow);
+      const rightSortDate = billDueDateSortValue(rowsById.get(right.billId) as BillReportRow);
+
+      return (leftSortDate ?? "").localeCompare(rightSortDate ?? "");
+    });
 }
 
 export async function getAgingReport() {
@@ -133,15 +162,14 @@ export async function getAgingReport() {
   const bucketTotals = emptyBuckets();
 
   rows.forEach((bill) => {
-    const outstanding = outstandingAmount(Number(bill.amount), Number(bill.amount_paid));
+    const goldOutstanding = billOutstandingGoldAmount(bill);
+    const diamondOutstanding = billOutstandingDiamondAmount(bill);
+    const outstanding = goldOutstanding + diamondOutstanding;
 
     if (outstanding <= 0) {
       return;
     }
 
-    const daysOverdue = calculateDaysOverdue(bill.due_date);
-    const bucket = bucketForDaysOverdue(daysOverdue);
-    const itemType = bill.item_type;
     const row =
       customerMap.get(bill.customer_id) ??
       {
@@ -151,11 +179,28 @@ export async function getAgingReport() {
         totalOutstanding: 0,
       };
 
-    row.buckets[bucket][itemType] += outstanding;
     row.totalOutstanding += outstanding;
     customerMap.set(bill.customer_id, row);
 
-    bucketTotals[bucket][itemType] += outstanding;
+    const dueDateEntries = billDueDateEntries(bill);
+
+    if (goldOutstanding > 0 && bill.gold_due_date) {
+      const goldBucket = bucketForDaysOverdue(
+        dueDateEntries.find((entry) => entry.metal === "gold")?.daysOverdue ?? 0,
+      );
+
+      row.buckets[goldBucket].gold += goldOutstanding;
+      bucketTotals[goldBucket].gold += goldOutstanding;
+    }
+
+    if (diamondOutstanding > 0 && bill.diamond_due_date) {
+      const diamondBucket = bucketForDaysOverdue(
+        dueDateEntries.find((entry) => entry.metal === "diamond")?.daysOverdue ?? 0,
+      );
+
+      row.buckets[diamondBucket].diamond += diamondOutstanding;
+      bucketTotals[diamondBucket].diamond += diamondOutstanding;
+    }
   });
 
   const rowsForTable = Array.from(customerMap.values()).sort(
@@ -180,7 +225,7 @@ export async function getCustomerLedger(customerId: string) {
       supabase.from("customers").select("id, name").eq("id", customerId).maybeSingle(),
       supabase
         .from("bills")
-        .select("id, bill_number, bill_date, amount, created_at, item_type")
+        .select("id, bill_number, bill_date, gold_amount, diamond_amount, created_at")
         .eq("customer_id", customerId),
       supabase
         .from("payments")
@@ -206,21 +251,21 @@ export async function getCustomerLedger(customerId: string) {
 
   const entries: Array<LedgerEntry & { createdAt: string }> = [
     ...((bills ?? []) as Array<{
-      amount: number;
       bill_date: string;
       bill_number: string;
       created_at: string;
+      diamond_amount: number;
+      gold_amount: number;
       id: string;
-      item_type: "gold" | "diamond";
     }>).map((bill) => ({
       balance: 0,
       createdAt: bill.created_at,
       credit: 0,
       date: bill.bill_date,
-      debit: Number(bill.amount),
-      description: `${bill.item_type} bill ${bill.bill_number}`,
+      debit: billTotalAmount(bill),
+      description: `${billMetals(bill).join(" + ") || "mixed"} bill ${bill.bill_number}`,
       entryType: "bill" as const,
-      itemType: bill.item_type,
+      itemType: billMetals(bill).join(" / ") || null,
       reference: bill.bill_number,
     })),
     ...((payments ?? []) as Array<{
@@ -293,13 +338,16 @@ export async function getExposureReport() {
   };
 
   rows.forEach((bill) => {
-    const outstanding = outstandingAmount(Number(bill.amount), Number(bill.amount_paid));
+    const goldOutstanding = billOutstandingGoldAmount(bill);
+    const diamondOutstanding = billOutstandingDiamondAmount(bill);
+    const outstanding = goldOutstanding + diamondOutstanding;
 
     if (outstanding <= 0) {
       return;
     }
 
-    totals[bill.item_type] += outstanding;
+    totals.gold += goldOutstanding;
+    totals.diamond += diamondOutstanding;
   });
 
   return {
@@ -316,7 +364,7 @@ export async function getPaymentAllocationReport(paymentId: string) {
   const { data, error } = await supabase
     .from("payments")
     .select(
-      "id, payment_date, amount, notes, customers(name), payment_allocations(id, bill_id, amount_allocated, bills(bill_number, item_type))",
+      "id, payment_date, amount, notes, customers(name), payment_allocations(id, bill_id, allocated_to, amount_allocated, bills(bill_number))",
     )
     .eq("id", paymentId)
     .maybeSingle();
@@ -331,14 +379,15 @@ export async function getPaymentAllocationReport(paymentId: string) {
 
   const allocations = ((data.payment_allocations ?? []) as Array<{
     amount_allocated: number;
+    allocated_to: "gold" | "diamond";
     bill_id: string;
-    bills: Array<{ bill_number: string; item_type: "gold" | "diamond" }> | null;
+    bills: Array<{ bill_number: string }> | null;
     id: string;
   }>).map((allocation) => ({
     amountAllocated: Number(allocation.amount_allocated),
     billId: allocation.bill_id,
     billNumber: allocation.bills?.[0]?.bill_number ?? "Unknown bill",
-    itemType: allocation.bills?.[0]?.item_type ?? "gold",
+    itemType: allocation.allocated_to,
   }));
   const allocatedAmount = allocations.reduce((sum, allocation) => sum + allocation.amountAllocated, 0);
   const totalAmount = Number(data.amount);

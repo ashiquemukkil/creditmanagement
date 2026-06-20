@@ -11,11 +11,11 @@ export async function createBillAction(formData: FormData): Promise<ActionResult
   try {
     const user = await requireTeamMember();
     const payload = parseBillEntryInput({
-      amount: String(formData.get("amount") || 0),
       billDate: String(formData.get("bill_date") || ""),
       billNumber: String(formData.get("bill_number") || ""),
       customerId: String(formData.get("customer_id") || ""),
-      itemType: String(formData.get("item_type") || ""),
+      diamondAmount: String(formData.get("diamond_amount") || 0),
+      goldAmount: String(formData.get("gold_amount") || 0),
     });
     const supabase = await createSupabaseServerClient();
     const data = await createBillFromEntry(payload, user.id, supabase);
@@ -49,7 +49,7 @@ export async function deleteBillAction(formData: FormData): Promise<ActionResult
     const supabase = await createSupabaseServerClient();
     const { data: bill, error: billError } = await supabase
       .from("bills")
-      .select("id, bill_number, customer_id, amount_paid")
+      .select("id, bill_number, customer_id, amount_paid_gold, amount_paid_diamond")
       .eq("id", billId)
       .maybeSingle();
 
@@ -61,7 +61,7 @@ export async function deleteBillAction(formData: FormData): Promise<ActionResult
       throw new Error("Bill not found.");
     }
 
-    if (Number(bill.amount_paid) > 0) {
+    if (Number(bill.amount_paid_gold) > 0 || Number(bill.amount_paid_diamond) > 0) {
       throw new Error("Delete blocked. Bills with applied payments cannot be deleted.");
     }
 

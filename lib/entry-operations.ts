@@ -2,15 +2,14 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { BillItemType } from "@/lib/bills";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type BillEntryInput = {
-  amount: number;
   billDate: string;
   billNumber: string;
   customerId: string;
-  itemType: BillItemType;
+  diamondAmount: number;
+  goldAmount: number;
 };
 
 export type PaymentEntryInput = {
@@ -21,17 +20,17 @@ export type PaymentEntryInput = {
 };
 
 export function parseBillEntryInput(input: {
-  amount: number | string;
   billDate: string;
   billNumber: string;
   customerId: string;
-  itemType: string;
+  diamondAmount: number | string;
+  goldAmount: number | string;
 }): BillEntryInput {
   const customerId = String(input.customerId || "").trim();
   const billNumber = String(input.billNumber || "").trim();
-  const itemType = String(input.itemType || "").trim() as BillItemType;
   const billDate = String(input.billDate || "").trim();
-  const amount = Number(input.amount || 0);
+  const goldAmount = Number(input.goldAmount || 0);
+  const diamondAmount = Number(input.diamondAmount || 0);
 
   if (!customerId) {
     throw new Error("Please choose a customer from the list.");
@@ -41,24 +40,28 @@ export function parseBillEntryInput(input: {
     throw new Error("Bill number is required.");
   }
 
-  if (itemType !== "gold" && itemType !== "diamond") {
-    throw new Error("Item type must be gold or diamond.");
-  }
-
   if (!billDate || Number.isNaN(new Date(`${billDate}T00:00:00`).getTime())) {
     throw new Error("Bill date is required.");
   }
 
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error("Amount must be greater than zero.");
+  if (!Number.isFinite(goldAmount) || goldAmount < 0) {
+    throw new Error("Gold amount must be zero or greater.");
+  }
+
+  if (!Number.isFinite(diamondAmount) || diamondAmount < 0) {
+    throw new Error("Diamond amount must be zero or greater.");
+  }
+
+  if (goldAmount <= 0 && diamondAmount <= 0) {
+    throw new Error("Enter a gold amount, diamond amount, or both.");
   }
 
   return {
-    amount: Number(amount.toFixed(2)),
     billDate,
     billNumber,
     customerId,
-    itemType,
+    diamondAmount: Number(diamondAmount.toFixed(2)),
+    goldAmount: Number(goldAmount.toFixed(2)),
   };
 }
 
@@ -138,22 +141,39 @@ export async function createBillFromEntry(
     throw new Error("Bill number already exists.");
   }
 
-  const creditDays = input.itemType === "gold" ? customer.gold_credit_days : customer.diamond_credit_days;
-  const dueDateValue = new Date(`${input.billDate}T00:00:00`);
-  dueDateValue.setDate(dueDateValue.getDate() + creditDays);
-  const dueDate = dueDateValue.toISOString().slice(0, 10);
+  const billDateValue = new Date(`${input.billDate}T00:00:00`);
+  const buildDueDate = (creditDays: number) => {
+    const dueDateValue = new Date(billDateValue);
+    dueDateValue.setDate(dueDateValue.getDate() + creditDays);
+
+    return dueDateValue.toISOString().slice(0, 10);
+  };
+  const goldDueDate = input.goldAmount > 0 ? buildDueDate(customer.gold_credit_days) : null;
+  const diamondDueDate =
+    input.diamondAmount > 0 ? buildDueDate(customer.diamond_credit_days) : null;
+  const dueDate =
+    goldDueDate && diamondDueDate
+      ? (goldDueDate > diamondDueDate ? goldDueDate : diamondDueDate)
+      : (goldDueDate ?? diamondDueDate);
+
+  if (!dueDate) {
+    throw new Error("Unable to compute bill due date.");
+  }
 
   const { data, error } = await db
     .from("bills")
     .insert({
-      amount: input.amount,
-      amount_paid: 0,
+      amount_paid_diamond: 0,
+      amount_paid_gold: 0,
       bill_date: input.billDate,
       bill_number: input.billNumber,
       created_by: createdById,
       customer_id: input.customerId,
+      diamond_amount: input.diamondAmount,
+      diamond_due_date: diamondDueDate,
       due_date: dueDate,
-      item_type: input.itemType,
+      gold_amount: input.goldAmount,
+      gold_due_date: goldDueDate,
       status: "open",
     })
     .select("id, customer_id, bill_number")
@@ -172,6 +192,7 @@ export async function createBillFromEntry(
 
 export async function createPaymentFromEntry(
   input: PaymentEntryInput,
+  createdById: string,
   supabase?: SupabaseClient,
 ) {
   const db = supabase ?? (await createSupabaseServerClient());
@@ -189,12 +210,17 @@ export async function createPaymentFromEntry(
     throw new Error("Selected customer was not found.");
   }
 
-  const { data, error } = await db.rpc("create_payment_with_allocations", {
-    p_amount: input.amount,
-    p_customer_id: input.customerId,
-    p_notes: input.notes,
-    p_payment_date: input.paymentDate,
-  });
+  const { data, error } = await db
+    .from("payments")
+    .insert({
+      amount: input.amount,
+      created_by: createdById,
+      customer_id: input.customerId,
+      notes: input.notes,
+      payment_date: input.paymentDate,
+    })
+    .select("id")
+    .single();
 
   if (error) {
     throw error;

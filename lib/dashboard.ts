@@ -1,44 +1,34 @@
 import "server-only";
 
+import { billDaysOverdue, billMetals, billOutstandingTotalAmount, billTotalAmount } from "@/lib/bills";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type OutstandingBillRow = {
-  amount: number;
-  amount_paid: number;
+  amount_paid_diamond: number;
+  amount_paid_gold: number;
   bill_date: string;
   bill_number: string;
   created_at: string;
+  customer: { name: string } | null;
   customer_id: string;
-  customers: Array<{ name: string }> | null;
+  diamond_amount: number;
+  diamond_due_date: string | null;
   due_date: string;
   id: string;
-  item_type: "gold" | "diamond";
+  gold_amount: number;
+  gold_due_date: string | null;
   status: "open" | "partial" | "closed";
 };
 
 type RecentPaymentRow = {
   amount: number;
+  customer: { name: string } | null;
   created_at: string;
   customer_id: string;
-  customers: Array<{ name: string }> | null;
   id: string;
   notes: string | null;
   payment_date: string;
 };
-
-function startOfToday() {
-  const today = new Date();
-  return new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-}
-
-function calculateDaysOverdue(dueDate: string) {
-  const due = new Date(`${dueDate}T00:00:00`).getTime();
-  return Math.max(Math.floor((startOfToday() - due) / (1000 * 60 * 60 * 24)), 0);
-}
-
-function remainingAmount(amount: number, amountPaid: number) {
-  return Math.max(Number(amount) - Number(amountPaid), 0);
-}
 
 export async function getDashboardSnapshot() {
   const supabase = await createSupabaseServerClient();
@@ -47,14 +37,16 @@ export async function getDashboardSnapshot() {
       supabase
         .from("bills")
         .select(
-          "id, customer_id, bill_number, bill_date, due_date, item_type, amount, amount_paid, status, created_at, customers(name)",
+          "id, customer_id, customer:customer_id(name), bill_number, bill_date, gold_amount, diamond_amount, gold_due_date, diamond_due_date, due_date, amount_paid_gold, amount_paid_diamond, status, created_at",
         )
-        .in("status", ["open", "partial"]),
+        .in("status", ["open", "partial"])
+        .overrideTypes<OutstandingBillRow[]>(),
       supabase
         .from("payments")
-        .select("id, customer_id, payment_date, amount, notes, created_at, customers(name)")
+        .select("id, customer_id, customer:customer_id(name), payment_date, amount, notes, created_at")
         .order("created_at", { ascending: false })
-        .limit(10),
+        .limit(10)
+        .overrideTypes<RecentPaymentRow[]>(),
     ]);
 
   if (billsError) {
@@ -69,12 +61,12 @@ export async function getDashboardSnapshot() {
   const recentPayments = (payments ?? []) as RecentPaymentRow[];
 
   const totalOutstanding = outstandingBills.reduce(
-    (sum, bill) => sum + remainingAmount(Number(bill.amount), Number(bill.amount_paid)),
+    (sum, bill) => sum + billOutstandingTotalAmount(bill),
     0,
   );
 
   const overdueBills = outstandingBills.filter(
-    (bill) => remainingAmount(Number(bill.amount), Number(bill.amount_paid)) > 0 && calculateDaysOverdue(bill.due_date) > 0,
+    (bill) => billOutstandingTotalAmount(bill) > 0 && billDaysOverdue(bill) > 0,
   );
 
   const topOverdueMap = new Map<
@@ -91,13 +83,13 @@ export async function getDashboardSnapshot() {
   overdueBills.forEach((bill) => {
     const current = topOverdueMap.get(bill.customer_id) ?? {
       customerId: bill.customer_id,
-      customerName: bill.customers?.[0]?.name ?? "Unknown customer",
+      customerName: bill.customer?.name ?? "Unknown customer",
       maxDaysOverdue: 0,
       overdueBillCount: 0,
       totalOutstanding: 0,
     };
-    const outstanding = remainingAmount(Number(bill.amount), Number(bill.amount_paid));
-    const daysOverdue = calculateDaysOverdue(bill.due_date);
+    const outstanding = billOutstandingTotalAmount(bill);
+    const daysOverdue = billDaysOverdue(bill);
 
     current.maxDaysOverdue = Math.max(current.maxDaysOverdue, daysOverdue);
     current.overdueBillCount += 1;
@@ -110,12 +102,12 @@ export async function getDashboardSnapshot() {
     .sort((left, right) => right.created_at.localeCompare(left.created_at))
     .slice(0, 10)
     .map((bill) => ({
-      amount: Number(bill.amount),
+      amount: billTotalAmount(bill),
       createdAt: bill.created_at,
       customerId: bill.customer_id,
-      customerName: bill.customers?.[0]?.name ?? "Unknown customer",
+      customerName: bill.customer?.name ?? "Unknown customer",
       date: bill.bill_date,
-      description: `${bill.item_type} bill ${bill.bill_number}`,
+      description: `${bill.bill_number}`,
       id: bill.id,
       type: "bill" as const,
     }));
@@ -124,7 +116,7 @@ export async function getDashboardSnapshot() {
     amount: Number(payment.amount),
     createdAt: payment.created_at,
     customerId: payment.customer_id,
-    customerName: payment.customers?.[0]?.name ?? "Unknown customer",
+    customerName: payment.customer?.name ?? "Unknown customer",
     date: payment.payment_date,
     description: payment.notes || "Customer payment",
     id: payment.id,

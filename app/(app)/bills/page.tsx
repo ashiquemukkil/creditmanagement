@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { DeleteBillButton } from "@/components/delete-bill-button";
 import { canManageData, getCurrentUserRole } from "@/lib/auth";
-import { type BillItemType, type BillStatus, listBills } from "@/lib/bills";
+import { billDueDateEntries, billMetals, type BillMetal, type BillStatus, listBills } from "@/lib/bills";
 import { listCustomerOptions } from "@/lib/customers";
 
 function formatCurrency(amount: number) {
@@ -22,7 +22,17 @@ function formatDate(dateValue: string) {
   }).format(new Date(`${dateValue}T00:00:00`));
 }
 
-function itemTypeBadgeClass(itemType: BillItemType) {
+function formatDueDateSummary(bill: Parameters<typeof billDueDateEntries>[0]) {
+  const entries = billDueDateEntries(bill);
+
+  if (entries.length === 0) {
+    return formatDate(bill.due_date);
+  }
+
+  return entries.map((entry) => `${entry.metal}: ${formatDate(entry.dueDate)}`).join(" / ");
+}
+
+function itemTypeBadgeClass(itemType: BillMetal) {
   return itemType === "gold"
     ? "bg-amber-100 text-amber-800"
     : "bg-sky-100 text-sky-800";
@@ -43,20 +53,20 @@ function statusBadgeClass(status: BillStatus) {
 type BillsPageProps = {
   searchParams: Promise<{
     customer?: string;
-    item_type?: BillItemType;
+    metal?: BillMetal;
     status?: BillStatus;
   }>;
 };
 
 export default async function BillsPage({ searchParams }: BillsPageProps) {
-  const [{ customer, item_type: itemType, status }, role, customerOptions] = await Promise.all([
+  const [{ customer, metal, status }, role, customerOptions] = await Promise.all([
     searchParams,
     getCurrentUserRole(),
     listCustomerOptions(),
   ]);
 
   const [bills] = await Promise.all([
-    listBills({ customerId: customer, itemType, status }),
+    listBills({ customerId: customer, metal, status }),
   ]);
   const canCreate = canManageData(role);
 
@@ -103,19 +113,6 @@ export default async function BillsPage({ searchParams }: BillsPageProps) {
         </label>
 
         <label className="space-y-2 text-sm font-medium text-stone-700">
-          <span>Item type</span>
-          <select
-            name="item_type"
-            defaultValue={itemType ?? ""}
-            className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-950"
-          >
-            <option value="">All types</option>
-            <option value="gold">Gold</option>
-            <option value="diamond">Diamond</option>
-          </select>
-        </label>
-
-        <label className="space-y-2 text-sm font-medium text-stone-700">
           <span>Status</span>
           <select
             name="status"
@@ -148,10 +145,11 @@ export default async function BillsPage({ searchParams }: BillsPageProps) {
             <tr>
               <th className="px-5 py-4">Bill number</th>
               <th className="px-5 py-4">Customer</th>
-              <th className="px-5 py-4">Type</th>
               <th className="px-5 py-4">Bill date</th>
-              <th className="px-5 py-4">Amount</th>
-              <th className="px-5 py-4">Due date</th>
+              <th className="px-5 py-4">Gold</th>
+              <th className="px-5 py-4">Diamond</th>
+              <th className="px-5 py-4">Total</th>
+              <th className="px-5 py-4">Due dates</th>
               <th className="px-5 py-4">Days overdue</th>
               <th className="px-5 py-4">Status</th>
               <th className="px-5 py-4">Actions</th>
@@ -160,7 +158,7 @@ export default async function BillsPage({ searchParams }: BillsPageProps) {
           <tbody className="divide-y divide-stone-200">
             {bills.length === 0 ? (
               <tr>
-                <td className="px-5 py-8 text-stone-500" colSpan={9}>
+                <td className="px-5 py-8 text-stone-500" colSpan={11}>
                   No bills found for the current filters.
                 </td>
               </tr>
@@ -173,14 +171,11 @@ export default async function BillsPage({ searchParams }: BillsPageProps) {
                       {bill.customerName}
                     </Link>
                   </td>
-                  <td className="px-5 py-4">
-                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${itemTypeBadgeClass(bill.item_type)}`}>
-                      {bill.item_type}
-                    </span>
-                  </td>
                   <td className="px-5 py-4">{formatDate(bill.bill_date)}</td>
-                  <td className="px-5 py-4 font-medium text-stone-950">{formatCurrency(Number(bill.amount))}</td>
-                  <td className="px-5 py-4">{formatDate(bill.due_date)}</td>
+                  <td className="px-5 py-4 font-medium text-stone-950">{formatCurrency(Number(bill.gold_amount))}</td>
+                  <td className="px-5 py-4 font-medium text-stone-950">{formatCurrency(Number(bill.diamond_amount))}</td>
+                  <td className="px-5 py-4 font-medium text-stone-950">{formatCurrency(bill.totalAmount)}</td>
+                  <td className="px-5 py-4">{formatDueDateSummary(bill)}</td>
                   <td className="px-5 py-4">{bill.daysOverdue > 0 ? bill.daysOverdue : ""}</td>
                   <td className="px-5 py-4">
                     <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusBadgeClass(bill.status)}`}>

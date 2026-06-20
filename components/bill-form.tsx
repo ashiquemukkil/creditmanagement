@@ -1,12 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useRef, useTransition } from "react";
 
 import { createBillAction } from "@/app/(app)/bills/actions";
 import { CustomerPicker } from "@/components/customer-picker";
 import { useToast } from "@/components/toast-provider";
-import type { BillItemType } from "@/lib/bills";
 
 type CustomerOption = {
   id: string;
@@ -18,36 +17,45 @@ type BillFormProps = {
   customers: CustomerOption[];
   defaultBillDate: string;
   defaultCustomerId?: string;
-  defaultItemType?: BillItemType;
 };
 
 export function BillForm({
   customers,
   defaultBillDate,
   defaultCustomerId,
-  defaultItemType = "gold",
 }: BillFormProps) {
   const router = useRouter();
   const { showError, showSuccess } = useToast();
   const [isPending, startTransition] = useTransition();
+  const isSubmittingRef = useRef(false);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isSubmittingRef.current) {
+      return;
+    }
+
+    isSubmittingRef.current = true;
     const formData = new FormData(event.currentTarget);
 
     startTransition(async () => {
-      const result = await createBillAction(formData);
+      try {
+        const result = await createBillAction(formData);
 
-      if (!result.ok) {
-        showError(result.message);
-        return;
-      }
+        if (!result.ok) {
+          showError(result.message);
+          return;
+        }
 
-      showSuccess(result.message);
+        showSuccess(result.message);
 
-      if (result.redirectTo) {
-        router.push(result.redirectTo);
-        router.refresh();
+        if (result.redirectTo) {
+          router.push(result.redirectTo);
+          router.refresh();
+        }
+      } finally {
+        isSubmittingRef.current = false;
       }
     });
   }
@@ -60,7 +68,7 @@ export function BillForm({
         </p>
         <h2 className="text-3xl font-semibold tracking-tight text-stone-950">Add bill</h2>
         <p className="max-w-2xl text-sm leading-7 text-stone-600">
-          Due date is computed on the server from the selected customer’s credit terms.
+          Gold and diamond due dates are computed on the server from the selected customer’s credit terms.
         </p>
       </div>
 
@@ -81,27 +89,7 @@ export function BillForm({
           />
         </label>
 
-        <fieldset className="space-y-3">
-          <legend className="text-sm font-medium text-stone-700">Item type</legend>
-          <div className="flex gap-3">
-            {(["gold", "diamond"] as const).map((itemType) => (
-              <label
-                key={itemType}
-                className="inline-flex items-center gap-3 rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-800"
-              >
-                <input
-                  type="radio"
-                  name="item_type"
-                  value={itemType}
-                  defaultChecked={defaultItemType === itemType}
-                />
-                <span className="capitalize">{itemType}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid gap-5 sm:grid-cols-3">
           <label className="block space-y-2 text-sm font-medium text-stone-700">
             <span>Bill date</span>
             <input
@@ -114,13 +102,26 @@ export function BillForm({
           </label>
 
           <label className="block space-y-2 text-sm font-medium text-stone-700">
-            <span>Amount</span>
+            <span>Gold amount</span>
             <input
-              required
-              min="0.01"
+              min="0"
               step="0.01"
-              name="amount"
+              name="gold_amount"
               type="number"
+              defaultValue="0"
+              className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-600"
+              placeholder="0.00"
+            />
+          </label>
+
+          <label className="block space-y-2 text-sm font-medium text-stone-700">
+            <span>Diamond amount</span>
+            <input
+              min="0"
+              step="0.01"
+              name="diamond_amount"
+              type="number"
+              defaultValue="0"
               className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-600"
               placeholder="0.00"
             />

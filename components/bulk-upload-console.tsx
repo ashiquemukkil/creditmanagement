@@ -16,13 +16,13 @@ type CustomerOption = {
 };
 
 type BillPreviewRow = {
-  amount: number | null;
   billDate: string | null;
   billNumber: string;
   customerId: string | null;
   customerName: string;
+  diamondAmount: number | null;
   errors: string[];
-  itemType: string;
+  goldAmount: number | null;
   rowNumber: number;
   valid: boolean;
 };
@@ -43,7 +43,7 @@ type BulkUploadConsoleProps = {
   existingBillNumbers: string[];
 };
 
-const billTemplateColumns = ["customer_name", "bill_number", "item_type", "bill_date", "amount"];
+const billTemplateColumns = ["customer_name", "bill_number", "bill_date", "gold_amount", "diamond_amount"];
 const paymentTemplateColumns = ["customer_name", "payment_date", "amount", "notes"];
 
 function normalizeText(value: string) {
@@ -84,6 +84,17 @@ function toIsoDate(value: unknown): string | null {
 function parsePositiveAmount(value: unknown) {
   const amount = Number(String(value ?? "").trim());
   return Number.isFinite(amount) && amount > 0 ? Number(amount.toFixed(2)) : null;
+}
+
+function parseNonNegativeAmount(value: unknown) {
+  const text = String(value ?? "").trim();
+
+  if (!text) {
+    return 0;
+  }
+
+  const amount = Number(text);
+  return Number.isFinite(amount) && amount >= 0 ? Number(amount.toFixed(2)) : null;
 }
 
 export function BulkUploadConsole({ customers, existingBillNumbers }: BulkUploadConsoleProps) {
@@ -143,9 +154,9 @@ export function BulkUploadConsole({ customers, existingBillNumbers }: BulkUpload
         const rowNumber = index + 2;
         const customerName = String(values[0] ?? "").trim();
         const billNumber = String(values[1] ?? "").trim();
-        const itemType = String(values[2] ?? "").trim();
-        const billDate = toIsoDate(values[3]);
-        const amount = parsePositiveAmount(values[4]);
+        const billDate = toIsoDate(values[2]);
+        const goldAmount = parseNonNegativeAmount(values[3]);
+        const diamondAmount = parseNonNegativeAmount(values[4]);
         const errors: string[] = [];
         const customerOptions = customerMatches.get(normalizeText(customerName)) ?? [];
         const normalizedBillNumber = normalizeText(billNumber);
@@ -174,31 +185,42 @@ export function BulkUploadConsole({ customers, existingBillNumbers }: BulkUpload
           seenBillNumbers.add(normalizedBillNumber);
         }
 
-        if (itemType !== "gold" && itemType !== "diamond") {
-          errors.push("invalid item_type");
-        }
-
         if (!billDate) {
           errors.push("invalid bill_date");
         }
 
-        if (amount === null) {
-          errors.push("invalid amount");
+        if (goldAmount === null) {
+          errors.push("invalid gold_amount");
+        }
+
+        if (diamondAmount === null) {
+          errors.push("invalid diamond_amount");
+        }
+
+        if ((goldAmount ?? 0) <= 0 && (diamondAmount ?? 0) <= 0) {
+          errors.push("at least one bill amount must be greater than zero");
         }
 
         return {
-          amount,
           billDate,
           billNumber,
           customerId: customerOptions.length === 1 ? customerOptions[0].id : null,
           customerName,
+          diamondAmount,
           errors,
-          itemType,
+          goldAmount,
           rowNumber,
           valid: errors.length === 0,
         } satisfies BillPreviewRow;
       })
-      .filter((row) => row.customerName || row.billNumber || row.itemType || row.billDate || row.amount !== null);
+      .filter(
+        (row) =>
+          row.customerName ||
+          row.billNumber ||
+          row.billDate ||
+          row.goldAmount !== null ||
+          row.diamondAmount !== null,
+      );
   }
 
   function validatePaymentRows(rows: unknown[][]) {
@@ -298,11 +320,11 @@ export function BulkUploadConsole({ customers, existingBillNumbers }: BulkUpload
         const rows = validRows as BillPreviewRow[];
         const result = await commitBulkBillsAction(
           rows.map((row) => ({
-            amount: row.amount ?? 0,
             billDate: row.billDate ?? "",
             billNumber: row.billNumber,
             customerId: row.customerId ?? "",
-            itemType: row.itemType,
+            diamondAmount: row.diamondAmount ?? 0,
+            goldAmount: row.goldAmount ?? 0,
             rowNumber: row.rowNumber,
           })),
         );
@@ -409,9 +431,9 @@ export function BulkUploadConsole({ customers, existingBillNumbers }: BulkUpload
                   <th className="px-5 py-4">Row</th>
                   <th className="px-5 py-4">Customer</th>
                   {activeTab === "bills" ? <th className="px-5 py-4">Bill #</th> : null}
-                  {activeTab === "bills" ? <th className="px-5 py-4">Type</th> : null}
                   <th className="px-5 py-4">Date</th>
-                  <th className="px-5 py-4">Amount</th>
+                  {activeTab === "bills" ? <th className="px-5 py-4">Gold</th> : null}
+                  {activeTab === "bills" ? <th className="px-5 py-4">Diamond</th> : <th className="px-5 py-4">Amount</th>}
                   {activeTab === "payments" ? <th className="px-5 py-4">Notes</th> : null}
                   <th className="px-5 py-4">Status</th>
                 </tr>
@@ -422,9 +444,9 @@ export function BulkUploadConsole({ customers, existingBillNumbers }: BulkUpload
                     <td className="px-5 py-4 font-medium text-stone-950">{row.rowNumber}</td>
                     <td className="px-5 py-4">{row.customerName}</td>
                     {"billNumber" in row ? <td className="px-5 py-4">{row.billNumber}</td> : null}
-                    {"itemType" in row ? <td className="px-5 py-4">{row.itemType}</td> : null}
                     <td className="px-5 py-4">{"billDate" in row ? row.billDate || "-" : row.paymentDate || "-"}</td>
-                    <td className="px-5 py-4">{row.amount ?? "-"}</td>
+                    {"goldAmount" in row ? <td className="px-5 py-4">{row.goldAmount ?? "-"}</td> : null}
+                    <td className="px-5 py-4">{"diamondAmount" in row ? row.diamondAmount ?? "-" : row.amount ?? "-"}</td>
                     {"notes" in row ? <td className="px-5 py-4">{row.notes || "-"}</td> : null}
                     <td className="px-5 py-4">
                       {row.valid ? (

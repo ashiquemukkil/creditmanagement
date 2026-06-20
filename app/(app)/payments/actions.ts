@@ -9,7 +9,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function createPaymentAction(formData: FormData): Promise<ActionResult> {
   try {
-    await requireTeamMember();
+    const user = await requireTeamMember();
     const payload = parsePaymentEntryInput({
       amount: String(formData.get("amount") || 0),
       customerId: String(formData.get("customer_id") || ""),
@@ -17,7 +17,7 @@ export async function createPaymentAction(formData: FormData): Promise<ActionRes
       paymentDate: String(formData.get("payment_date") || ""),
     });
     const supabase = await createSupabaseServerClient();
-    await createPaymentFromEntry(payload, supabase);
+    await createPaymentFromEntry(payload, user.id, supabase);
 
     revalidatePath("/payments");
     revalidatePath(`/customers/${payload.customerId}`);
@@ -25,7 +25,7 @@ export async function createPaymentAction(formData: FormData): Promise<ActionRes
     revalidatePath("/customers");
 
     return {
-      message: "Payment created and allocated.",
+      message: "Payment created.",
       ok: true,
       redirectTo: `/customers/${payload.customerId}`,
     };

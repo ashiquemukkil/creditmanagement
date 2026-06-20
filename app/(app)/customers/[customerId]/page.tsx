@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { DeleteCustomerButton } from "@/components/delete-customer-button";
 import { canManageData, getCurrentUserRole } from "@/lib/auth";
-import { listBills } from "@/lib/bills";
+import { billDueDateEntries, listBills } from "@/lib/bills";
 import { getCustomerById } from "@/lib/customers";
 import { listPayments } from "@/lib/payments";
 
@@ -14,6 +14,16 @@ function formatCurrency(amount: number) {
     minimumFractionDigits: 2,
     style: "currency",
   }).format(amount);
+}
+
+function formatDueDateSummary(bill: Parameters<typeof billDueDateEntries>[0]) {
+  const entries = billDueDateEntries(bill);
+
+  if (entries.length === 0) {
+    return bill.due_date;
+  }
+
+  return entries.map((entry) => `${entry.metal}: ${entry.dueDate}`).join(" / ");
 }
 
 type CustomerDetailPageProps = {
@@ -118,9 +128,10 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
                   <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
                     <tr>
                       <th className="px-4 py-3">Bill #</th>
-                      <th className="px-4 py-3">Type</th>
-                      <th className="px-4 py-3">Amount</th>
-                      <th className="px-4 py-3">Due</th>
+                      <th className="px-4 py-3">Gold</th>
+                      <th className="px-4 py-3">Diamond</th>
+                      <th className="px-4 py-3">Total</th>
+                      <th className="px-4 py-3">Due dates</th>
                       <th className="px-4 py-3">Status</th>
                     </tr>
                   </thead>
@@ -128,9 +139,10 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
                     {bills.map((bill) => (
                       <tr key={bill.id}>
                         <td className="px-4 py-3 font-medium text-stone-950">{bill.bill_number}</td>
-                        <td className="px-4 py-3 capitalize">{bill.item_type}</td>
-                        <td className="px-4 py-3">{formatCurrency(Number(bill.amount))}</td>
-                        <td className="px-4 py-3">{bill.due_date}</td>
+                        <td className="px-4 py-3">{formatCurrency(Number(bill.gold_amount))}</td>
+                        <td className="px-4 py-3">{formatCurrency(Number(bill.diamond_amount))}</td>
+                        <td className="px-4 py-3">{formatCurrency(bill.totalAmount)}</td>
+                        <td className="px-4 py-3">{formatDueDateSummary(bill)}</td>
                         <td className="px-4 py-3 capitalize">{bill.status}</td>
                       </tr>
                     ))}

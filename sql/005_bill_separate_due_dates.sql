@@ -1,3 +1,82 @@
+alter table public.bills
+  add column if not exists gold_due_date date,
+  add column if not exists diamond_due_date date;
+
+create index if not exists idx_bills_gold_due_date on public.bills (gold_due_date);
+create index if not exists idx_bills_diamond_due_date on public.bills (diamond_due_date);
+
+update public.bills as b
+set
+  gold_due_date = case
+    when coalesce(b.gold_amount, 0) > 0 then b.bill_date + c.gold_credit_days
+    else null
+  end,
+  diamond_due_date = case
+    when coalesce(b.diamond_amount, 0) > 0 then b.bill_date + c.diamond_credit_days
+    else null
+  end,
+  due_date = case
+    when coalesce(b.gold_amount, 0) > 0 and coalesce(b.diamond_amount, 0) > 0 then greatest(b.bill_date + c.gold_credit_days, b.bill_date + c.diamond_credit_days)
+    when coalesce(b.gold_amount, 0) > 0 then b.bill_date + c.gold_credit_days
+    when coalesce(b.diamond_amount, 0) > 0 then b.bill_date + c.diamond_credit_days
+    else b.due_date
+  end
+from public.customers as c
+where c.id = b.customer_id;
+
+drop trigger if exists bills_set_due_date on public.bills;
+
+create or replace function public.set_bill_due_date()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  diamond_credit_days integer;
+  gold_credit_days integer;
+begin
+  if coalesce(new.gold_amount, 0) <= 0 and coalesce(new.diamond_amount, 0) <= 0 then
+    raise exception 'Bill must include a gold amount, diamond amount, or both.';
+  end if;
+
+  select c.gold_credit_days, c.diamond_credit_days
+  into gold_credit_days, diamond_credit_days
+  from public.customers as c
+  where c.id = new.customer_id;
+
+  if gold_credit_days is null or diamond_credit_days is null then
+    raise exception 'Unable to compute due date for customer %', new.customer_id;
+  end if;
+
+  new.gold_due_date := case
+    when coalesce(new.gold_amount, 0) > 0 then new.bill_date + gold_credit_days
+    else null
+  end;
+
+  new.diamond_due_date := case
+    when coalesce(new.diamond_amount, 0) > 0 then new.bill_date + diamond_credit_days
+    else null
+  end;
+
+  new.due_date := case
+    when new.gold_due_date is not null and new.diamond_due_date is not null then greatest(new.gold_due_date, new.diamond_due_date)
+    else coalesce(new.gold_due_date, new.diamond_due_date)
+  end;
+
+  if new.due_date is null then
+    raise exception 'Unable to compute due date for customer %', new.customer_id;
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger bills_set_due_date
+before insert or update of bill_date, customer_id, gold_amount, diamond_amount on public.bills
+for each row
+execute function public.set_bill_due_date();
+
 create or replace function public.create_payment_with_allocations(
   p_customer_id uuid,
   p_payment_date date,

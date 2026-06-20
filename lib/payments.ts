@@ -14,10 +14,10 @@ export type PaymentRecord = {
 
 export type PaymentAllocationRecord = {
   amount_allocated: number;
+  allocated_to: "gold" | "diamond";
   bill_id: string;
   bills: Array<{
     bill_number: string;
-    item_type: "gold" | "diamond";
   }> | null;
   created_at: string;
   id: string;
@@ -53,7 +53,7 @@ export async function listPayments(filters: ListPaymentsFilters = {}): Promise<P
   let query = supabase
     .from("payments")
     .select(
-      "id, customer_id, payment_date, amount, notes, created_at, created_by, customers(name), payment_allocations(id, bill_id, amount_allocated, created_at, bills(bill_number, item_type))",
+      "id, customer_id, payment_date, amount, notes, created_at, created_by, customers(name), payment_allocations(id, bill_id, allocated_to, amount_allocated, created_at, bills(bill_number))",
     )
     .order("payment_date", { ascending: false })
     .order("created_at", { ascending: false });
@@ -82,7 +82,7 @@ export async function listPayments(filters: ListPaymentsFilters = {}): Promise<P
       amountAllocated: Number(allocation.amount_allocated),
       billId: allocation.bill_id,
       billNumber: allocation.bills?.[0]?.bill_number ?? "Unknown bill",
-      itemType: allocation.bills?.[0]?.item_type ?? "gold",
+      itemType: allocation.allocated_to,
     })),
     customerName: payment.customers?.[0]?.name ?? "Unknown customer",
     unallocatedAmount: Math.max(

@@ -12,11 +12,11 @@ import {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type BulkBillCommitRow = {
-  amount: number;
   billDate: string;
   billNumber: string;
   customerId: string;
-  itemType: string;
+  diamondAmount: number;
+  goldAmount: number;
   rowNumber: number;
 };
 
@@ -37,11 +37,11 @@ export async function commitBulkBillsAction(rows: BulkBillCommitRow[]) {
   for (const row of rows) {
     try {
       const payload = parseBillEntryInput({
-        amount: row.amount,
         billDate: row.billDate,
         billNumber: row.billNumber,
         customerId: row.customerId,
-        itemType: row.itemType,
+        diamondAmount: row.diamondAmount,
+        goldAmount: row.goldAmount,
       });
       const result = await createBillFromEntry(payload, user.id, supabase);
       created.push({ ...result, rowNumber: row.rowNumber });
@@ -65,7 +65,7 @@ export async function commitBulkBillsAction(rows: BulkBillCommitRow[]) {
 }
 
 export async function commitBulkPaymentsAction(rows: BulkPaymentCommitRow[]) {
-  await requireTeamMember();
+  const user = await requireTeamMember();
   const supabase = await createSupabaseServerClient();
   const created: Array<{ customerId: string; paymentId: string; rowNumber: number }> = [];
   const skipped: Array<{ reason: string; rowNumber: number }> = [];
@@ -78,7 +78,7 @@ export async function commitBulkPaymentsAction(rows: BulkPaymentCommitRow[]) {
         notes: row.notes,
         paymentDate: row.paymentDate,
       });
-      const result = await createPaymentFromEntry(payload, supabase);
+      const result = await createPaymentFromEntry(payload, user.id, supabase);
       created.push({ ...result, rowNumber: row.rowNumber });
     } catch (error) {
       skipped.push({

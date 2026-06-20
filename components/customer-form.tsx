@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useRef, useTransition } from "react";
 
 import { createCustomerAction, updateCustomerAction } from "@/app/(app)/customers/actions";
 import { useToast } from "@/components/toast-provider";
@@ -30,9 +30,16 @@ export function CustomerForm({
   const router = useRouter();
   const { showError, showSuccess } = useToast();
   const [isPending, startTransition] = useTransition();
+  const isSubmittingRef = useRef(false);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isSubmittingRef.current) {
+      return;
+    }
+
+    isSubmittingRef.current = true;
     const formData = new FormData(event.currentTarget);
 
     if (customerId) {
@@ -40,20 +47,24 @@ export function CustomerForm({
     }
 
     startTransition(async () => {
-      const result = customerId
-        ? await updateCustomerAction(formData)
-        : await createCustomerAction(formData);
+      try {
+        const result = customerId
+          ? await updateCustomerAction(formData)
+          : await createCustomerAction(formData);
 
-      if (!result.ok) {
-        showError(result.message);
-        return;
-      }
+        if (!result.ok) {
+          showError(result.message);
+          return;
+        }
 
-      showSuccess(result.message);
+        showSuccess(result.message);
 
-      if (result.redirectTo) {
-        router.push(result.redirectTo);
-        router.refresh();
+        if (result.redirectTo) {
+          router.push(result.redirectTo);
+          router.refresh();
+        }
+      } finally {
+        isSubmittingRef.current = false;
       }
     });
   }

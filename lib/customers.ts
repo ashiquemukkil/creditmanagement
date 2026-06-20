@@ -1,5 +1,6 @@
 import "server-only";
 
+import { billOutstandingTotalAmount } from "@/lib/bills";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type CustomerRecord = {
@@ -18,9 +19,11 @@ export type CustomerListItem = CustomerRecord & {
 };
 
 type BillOutstandingRow = {
-  amount: number;
-  amount_paid: number;
+  amount_paid_diamond: number;
+  amount_paid_gold: number;
   customer_id: string;
+  diamond_amount: number;
+  gold_amount: number;
 };
 
 export async function listCustomers(): Promise<CustomerListItem[]> {
@@ -35,7 +38,7 @@ export async function listCustomers(): Promise<CustomerListItem[]> {
         .order("created_at", { ascending: false }),
       supabase
         .from("bills")
-        .select("customer_id, amount, amount_paid")
+        .select("customer_id, gold_amount, diamond_amount, amount_paid_gold, amount_paid_diamond")
         .in("status", ["open", "partial"]),
     ]);
 
@@ -50,7 +53,7 @@ export async function listCustomers(): Promise<CustomerListItem[]> {
   const totalsByCustomer = new Map<string, number>();
 
   ((bills ?? []) as BillOutstandingRow[]).forEach((bill) => {
-    const remaining = Math.max(Number(bill.amount) - Number(bill.amount_paid), 0);
+    const remaining = billOutstandingTotalAmount(bill);
     totalsByCustomer.set(
       bill.customer_id,
       (totalsByCustomer.get(bill.customer_id) ?? 0) + remaining,
@@ -97,7 +100,7 @@ export async function getCustomerById(customerId: string): Promise<CustomerListI
 
   const { data: bills, error: billsError } = await supabase
     .from("bills")
-    .select("amount, amount_paid")
+    .select("gold_amount, diamond_amount, amount_paid_gold, amount_paid_diamond")
     .eq("customer_id", customerId)
     .in("status", ["open", "partial"]);
 
@@ -105,8 +108,13 @@ export async function getCustomerById(customerId: string): Promise<CustomerListI
     throw billsError;
   }
 
-  const totalOutstanding = ((bills ?? []) as Array<{ amount: number; amount_paid: number }>).reduce(
-    (sum, bill) => sum + Math.max(Number(bill.amount) - Number(bill.amount_paid), 0),
+  const totalOutstanding = ((bills ?? []) as Array<{
+    amount_paid_diamond: number;
+    amount_paid_gold: number;
+    diamond_amount: number;
+    gold_amount: number;
+  }>).reduce(
+    (sum, bill) => sum + billOutstandingTotalAmount(bill),
     0,
   );
 

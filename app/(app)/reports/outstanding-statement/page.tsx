@@ -66,16 +66,18 @@ export default async function OutstandingStatementPage({ searchParams }: Outstan
             <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
               <tr>
                 <th className="px-5 py-4">Bill number</th>
-                <th className="px-5 py-4">Type</th>
-                <th className="px-5 py-4">Due date</th>
+                <th className="px-5 py-4">Metals</th>
+                <th className="px-5 py-4">Due dates</th>
                 <th className="px-5 py-4">Days overdue</th>
-                <th className="px-5 py-4">Outstanding</th>
+                <th className="px-5 py-4">Gold outstanding</th>
+                <th className="px-5 py-4">Diamond outstanding</th>
+                <th className="px-5 py-4">Total outstanding</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-200">
               {rows.length === 0 ? (
                 <tr>
-                  <td className="px-5 py-8 text-stone-500" colSpan={5}>
+                  <td className="px-5 py-8 text-stone-500" colSpan={7}>
                     No open or partial bills for this customer.
                   </td>
                 </tr>
@@ -83,9 +85,15 @@ export default async function OutstandingStatementPage({ searchParams }: Outstan
                 rows.map((row) => (
                   <tr key={row.billId} className="text-stone-700">
                     <td className="px-5 py-4 font-medium text-stone-950">{row.billNumber}</td>
-                    <td className="px-5 py-4 capitalize">{row.itemType}</td>
+                    <td className="px-5 py-4">{row.metalsLabel}</td>
                     <td className="px-5 py-4">{row.dueDate}</td>
                     <td className="px-5 py-4">{row.daysOverdue}</td>
+                    <td className="px-5 py-4 font-medium text-stone-950">
+                      {formatCurrency(row.goldOutstanding)}
+                    </td>
+                    <td className="px-5 py-4 font-medium text-stone-950">
+                      {formatCurrency(row.diamondOutstanding)}
+                    </td>
                     <td className="px-5 py-4 font-medium text-stone-950">
                       {formatCurrency(row.amountOutstanding)}
                     </td>

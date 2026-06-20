@@ -2,41 +2,101 @@ import "server-only";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export type BillItemType = "gold" | "diamond";
 export type BillStatus = "open" | "partial" | "closed";
+export type BillMetal = "gold" | "diamond";
 
 export type BillRecord = {
-  amount: number;
-  amount_paid: number;
+  amount_paid_diamond: number;
+  amount_paid_gold: number;
   bill_date: string;
   bill_number: string;
   created_at: string;
   created_by: string | null;
   customer_id: string;
+  diamond_amount: number;
+  diamond_due_date: string | null;
   due_date: string;
+  gold_amount: number;
+  gold_due_date: string | null;
   id: string;
-  item_type: BillItemType;
   status: BillStatus;
+};
+
+export type BillDueDateEntry = {
+  daysOverdue: number;
+  dueDate: string;
+  metal: BillMetal;
+  outstandingAmount: number;
+  totalAmount: number;
 };
 
 export type BillListItem = BillRecord & {
   customerName: string;
   daysOverdue: number;
+  outstandingDiamondAmount: number;
+  outstandingGoldAmount: number;
+  outstandingTotalAmount: number;
+  totalAmount: number;
 };
 
 type BillRow = BillRecord & {
-  customers: Array<{
+  customer: {
     name: string;
-  }> | null;
+  } | null;
 };
 
 type ListBillsFilters = {
   customerId?: string;
-  itemType?: BillItemType;
+  metal?: BillMetal;
   status?: BillStatus;
 };
 
-function calculateDaysOverdue(dueDate: string) {
+export function billTotalAmount(bill: Pick<BillRecord, "diamond_amount" | "gold_amount">) {
+  return Number(bill.gold_amount) + Number(bill.diamond_amount);
+}
+
+export function billOutstandingGoldAmount(
+  bill: Pick<BillRecord, "amount_paid_gold" | "gold_amount">,
+) {
+  return Math.max(Number(bill.gold_amount) - Number(bill.amount_paid_gold), 0);
+}
+
+export function billOutstandingDiamondAmount(
+  bill: Pick<BillRecord, "amount_paid_diamond" | "diamond_amount">,
+) {
+  return Math.max(Number(bill.diamond_amount) - Number(bill.amount_paid_diamond), 0);
+}
+
+export function billOutstandingTotalAmount(
+  bill: Pick<
+    BillRecord,
+    "amount_paid_diamond" | "amount_paid_gold" | "diamond_amount" | "gold_amount"
+  >,
+) {
+  return billOutstandingGoldAmount(bill) + billOutstandingDiamondAmount(bill);
+}
+
+export function billMetals(
+  bill: Pick<BillRecord, "diamond_amount" | "gold_amount">,
+): BillMetal[] {
+  const metals: BillMetal[] = [];
+
+  if (Number(bill.gold_amount) > 0) {
+    metals.push("gold");
+  }
+
+  if (Number(bill.diamond_amount) > 0) {
+    metals.push("diamond");
+  }
+
+  return metals;
+}
+
+export function calculateDaysOverdue(dueDate: string | null) {
+  if (!dueDate) {
+    return 0;
+  }
+
   const today = new Date();
   const now = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
   const due = new Date(`${dueDate}T00:00:00`).getTime();
@@ -45,12 +105,96 @@ function calculateDaysOverdue(dueDate: string) {
   return Math.max(difference, 0);
 }
 
+export function billDueDateEntries(
+  bill: Pick<
+    BillRecord,
+    | "amount_paid_diamond"
+    | "amount_paid_gold"
+    | "diamond_amount"
+    | "diamond_due_date"
+    | "gold_amount"
+    | "gold_due_date"
+  >,
+  options?: { outstandingOnly?: boolean },
+): BillDueDateEntry[] {
+  const entries: BillDueDateEntry[] = [];
+  const goldOutstandingAmount = billOutstandingGoldAmount(bill);
+  const diamondOutstandingAmount = billOutstandingDiamondAmount(bill);
+
+  if (Number(bill.gold_amount) > 0 && bill.gold_due_date) {
+    entries.push({
+      daysOverdue: calculateDaysOverdue(bill.gold_due_date),
+      dueDate: bill.gold_due_date,
+      metal: "gold",
+      outstandingAmount: goldOutstandingAmount,
+      totalAmount: Number(bill.gold_amount),
+    });
+  }
+
+  if (Number(bill.diamond_amount) > 0 && bill.diamond_due_date) {
+    entries.push({
+      daysOverdue: calculateDaysOverdue(bill.diamond_due_date),
+      dueDate: bill.diamond_due_date,
+      metal: "diamond",
+      outstandingAmount: diamondOutstandingAmount,
+      totalAmount: Number(bill.diamond_amount),
+    });
+  }
+
+  if (options?.outstandingOnly) {
+    return entries.filter((entry) => entry.outstandingAmount > 0);
+  }
+
+  return entries;
+}
+
+export function billDaysOverdue(
+  bill: Pick<
+    BillRecord,
+    | "amount_paid_diamond"
+    | "amount_paid_gold"
+    | "diamond_amount"
+    | "diamond_due_date"
+    | "gold_amount"
+    | "gold_due_date"
+  >,
+) {
+  return billDueDateEntries(bill, { outstandingOnly: true }).reduce(
+    (maxDays, entry) => Math.max(maxDays, entry.daysOverdue),
+    0,
+  );
+}
+
+export function billDueDateSortValue(
+  bill: Pick<
+    BillRecord,
+    | "amount_paid_diamond"
+    | "amount_paid_gold"
+    | "diamond_amount"
+    | "diamond_due_date"
+    | "gold_amount"
+    | "gold_due_date"
+  >,
+) {
+  const outstandingEntries = billDueDateEntries(bill, { outstandingOnly: true });
+
+  if (outstandingEntries.length > 0) {
+    return outstandingEntries
+      .map((entry) => entry.dueDate)
+      .sort((left, right) => left.localeCompare(right))[0];
+  }
+
+  return billDueDateEntries(bill)
+    .map((entry) => entry.dueDate)
+    .sort((left, right) => left.localeCompare(right))[0] ?? null;
+}
+
 export async function listBills(filters: ListBillsFilters = {}): Promise<BillListItem[]> {
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from("bills")
     .select(
-      "id, bill_number, customer_id, item_type, bill_date, amount, due_date, amount_paid, status, created_at, created_by, customers(name)",
+      "id, bill_number, customer_id, customer:customer_id(name), bill_date, gold_amount, diamond_amount, gold_due_date, diamond_due_date, due_date, amount_paid_gold, amount_paid_diamond, status, created_at, created_by",
     )
     .order("bill_date", { ascending: false })
     .order("created_at", { ascending: false });
@@ -59,15 +203,15 @@ export async function listBills(filters: ListBillsFilters = {}): Promise<BillLis
     query = query.eq("customer_id", filters.customerId);
   }
 
-  if (filters.itemType) {
-    query = query.eq("item_type", filters.itemType);
+  if (filters.metal) {
+    query = query.gt(filters.metal === "gold" ? "gold_amount" : "diamond_amount", 0);
   }
 
   if (filters.status) {
     query = query.eq("status", filters.status);
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.overrideTypes<BillRow[]>();
 
   if (error) {
     throw error;
@@ -75,7 +219,11 @@ export async function listBills(filters: ListBillsFilters = {}): Promise<BillLis
 
   return ((data ?? []) as BillRow[]).map((bill) => ({
     ...bill,
-    customerName: bill.customers?.[0]?.name ?? "Unknown customer",
-    daysOverdue: calculateDaysOverdue(bill.due_date),
+    customerName: bill.customer?.name ?? "Unknown customer",
+    daysOverdue: billDaysOverdue(bill),
+    outstandingDiamondAmount: billOutstandingDiamondAmount(bill),
+    outstandingGoldAmount: billOutstandingGoldAmount(bill),
+    outstandingTotalAmount: billOutstandingTotalAmount(bill),
+    totalAmount: billTotalAmount(bill),
   }));
 }
