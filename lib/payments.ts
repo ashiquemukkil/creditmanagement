@@ -72,41 +72,34 @@ export async function listPayments(filters: ListPaymentsFilters = {}): Promise<P
     throw error;
   }
 
-  return ((data ?? []) as PaymentRow[]).map((payment) => ({
-    ...payment,
-    allocatedAmount: (payment.payment_allocations ?? []).reduce(
-      (sum, allocation) => sum + Number(allocation.amount_allocated),
-      0,
-    ),
-    allocations: (payment.payment_allocations ?? []).map((allocation) => ({
+  return ((data ?? []) as PaymentRow[]).map((payment) => {
+    const paymentAmount = Number(payment.amount);
+    const allocations = (payment.payment_allocations ?? []).map((allocation) => ({
       amountAllocated: Number(allocation.amount_allocated),
       billId: allocation.bill_id,
-      billNumber: allocation.bills?.bill_number ?? "Unknown bill",
+      billNumber: allocation.bills?.[0]?.bill_number ?? "Unknown bill",
       itemType: allocation.allocated_to,
-    })),
-    customerName: payment.customers?.name ?? "Unknown customer",
-    unallocatedAmount: Math.max(
-      Number(payment.amount) -
-        (payment.payment_allocations ?? []).reduce(
-          (sum, allocation) => sum + Number(allocation.amount_allocated),
-          0,
-        ),
+    }));
+    const allocatedAmount = allocations.reduce(
+      (sum, allocation) => sum + allocation.amountAllocated,
       0,
-    ),
-    allocationStatus:
-      (payment.payment_allocations ?? []).length === 0
-        ? "unallocated"
-        : Math.max(
-              Number(payment.amount) -
-                (payment.payment_allocations ?? []).reduce(
-                  (sum, allocation) => sum + Number(allocation.amount_allocated),
-                  0,
-                ),
-              0,
-            ) > 0
-          ? "advance balance"
-          : "fully allocated",
-  }));
+    );
+    const unallocatedAmount = Math.max(paymentAmount - allocatedAmount, 0);
+
+    return {
+      ...payment,
+      allocatedAmount,
+      allocationStatus:
+        allocations.length === 0
+          ? "unallocated"
+          : unallocatedAmount > 0
+            ? "advance balance"
+            : "fully allocated",
+      allocations,
+      customerName: payment.customers?.[0]?.name ?? "Unknown customer",
+      unallocatedAmount,
+    };
+  });
 }
 
 export async function listPaymentOptions(): Promise<
@@ -117,11 +110,25 @@ export async function listPaymentOptions(): Promise<
     paymentDate: string;
   }>
 > {
-  const payments = await listPayments();
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("payments")
+    .select("id, amount, payment_date, customers(name)")
+    .order("payment_date", { ascending: false })
+    .order("created_at", { ascending: false });
 
-  return payments.map((payment) => ({
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as Array<{
+    amount: number;
+    customers: Array<{ name: string }> | null;
+    id: string;
+    payment_date: string;
+  }>).map((payment) => ({
     amount: Number(payment.amount),
-    customerName: payment.customerName,
+    customerName: payment.customers?.[0]?.name ?? "Unknown customer",
     id: payment.id,
     paymentDate: payment.payment_date,
   }));
