@@ -146,7 +146,7 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
                     ) : (
                       <div className="space-y-2">
                         {payment.allocations.map((allocation) => (
-                          <div key={allocation.billId} className="rounded-2xl bg-stone-50 px-3 py-2">
+                          <div key={`${allocation.billId}-${allocation.itemType}`} className="rounded-2xl bg-stone-50 px-3 py-2">
                             <div className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
                               {allocation.billNumber} · {allocation.itemType}
                             </div>

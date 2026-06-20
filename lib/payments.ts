@@ -16,9 +16,14 @@ export type PaymentAllocationRecord = {
   amount_allocated: number;
   allocated_to: "gold" | "diamond";
   bill_id: string;
-  bills: Array<{
-    bill_number: string;
-  }> | null;
+  bills:
+    | {
+        bill_number: string;
+      }
+    | Array<{
+        bill_number: string;
+      }>
+    | null;
   created_at: string;
   id: string;
 };
@@ -75,9 +80,14 @@ export async function listPayments(filters: ListPaymentsFilters = {}): Promise<P
   return ((data ?? []) as PaymentRow[]).map((payment) => {
     const paymentAmount = Number(payment.amount);
     const allocations = (payment.payment_allocations ?? []).map((allocation) => ({
+      // Supabase may return nested foreign rows as either an object or an array.
+      // Handle both shapes so bill numbers render correctly in breakdowns.
       amountAllocated: Number(allocation.amount_allocated),
       billId: allocation.bill_id,
-      billNumber: allocation.bills?.[0]?.bill_number ?? "Unknown bill",
+      billNumber:
+        (Array.isArray(allocation.bills)
+          ? allocation.bills[0]?.bill_number
+          : allocation.bills?.bill_number) ?? "Unknown bill",
       itemType: allocation.allocated_to,
     }));
     const allocatedAmount = allocations.reduce(

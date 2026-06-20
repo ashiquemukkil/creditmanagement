@@ -378,12 +378,20 @@ export async function getPaymentAllocationReport(paymentId: string) {
     amount_allocated: number;
     allocated_to: "gold" | "diamond";
     bill_id: string;
-    bills: Array<{ bill_number: string }> | null;
+    bills:
+      | {
+          bill_number: string;
+        }
+      | Array<{ bill_number: string }>
+      | null;
     id: string;
   }>).map((allocation) => ({
     amountAllocated: Number(allocation.amount_allocated),
     billId: allocation.bill_id,
-    billNumber: allocation.bills?.[0]?.bill_number ?? "Unknown bill",
+    billNumber:
+      (Array.isArray(allocation.bills)
+        ? allocation.bills[0]?.bill_number
+        : allocation.bills?.bill_number) ?? "Unknown bill",
     itemType: allocation.allocated_to,
   }));
   const allocatedAmount = allocations.reduce((sum, allocation) => sum + allocation.amountAllocated, 0);
