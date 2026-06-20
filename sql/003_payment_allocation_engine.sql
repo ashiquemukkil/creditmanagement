@@ -70,6 +70,10 @@ begin
         'gold'::text as allocated_to,
         round((b.gold_amount - b.amount_paid_gold)::numeric, 2) as outstanding_amount,
         b.gold_due_date as item_due_date,
+        case
+          when b.gold_due_date is not null and b.diamond_due_date is not null then least(b.gold_due_date, b.diamond_due_date)
+          else coalesce(b.gold_due_date, b.diamond_due_date, b.due_date)
+        end as bill_due_date,
         b.bill_date,
         b.created_at
       from public.bills as b
@@ -84,6 +88,10 @@ begin
         'diamond'::text as allocated_to,
         round((b.diamond_amount - b.amount_paid_diamond)::numeric, 2) as outstanding_amount,
         b.diamond_due_date as item_due_date,
+        case
+          when b.gold_due_date is not null and b.diamond_due_date is not null then least(b.gold_due_date, b.diamond_due_date)
+          else coalesce(b.gold_due_date, b.diamond_due_date, b.due_date)
+        end as bill_due_date,
         b.bill_date,
         b.created_at
       from public.bills as b
@@ -92,13 +100,15 @@ begin
         and b.amount_paid_diamond < b.diamond_amount
     ) as candidate
     order by
-      case when candidate.item_due_date is null then 1 else 0 end asc,
-      (current_date - candidate.item_due_date) desc nulls last,
-      candidate.item_due_date asc nulls last,
-      case when candidate.allocated_to = 'gold' then 0 else 1 end asc,
+      case when candidate.bill_due_date is null then 1 else 0 end asc,
+      (current_date - candidate.bill_due_date) desc nulls last,
+      candidate.bill_due_date asc nulls last,
       candidate.bill_date asc,
       candidate.created_at asc,
-      candidate.id asc
+      candidate.id asc,
+      case when candidate.item_due_date is null then 1 else 0 end asc,
+      candidate.item_due_date asc nulls last,
+      case when candidate.allocated_to = 'gold' then 0 else 1 end asc
   loop
     exit when v_remaining_amount <= 0;
 

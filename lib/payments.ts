@@ -81,10 +81,10 @@ export async function listPayments(filters: ListPaymentsFilters = {}): Promise<P
     allocations: (payment.payment_allocations ?? []).map((allocation) => ({
       amountAllocated: Number(allocation.amount_allocated),
       billId: allocation.bill_id,
-      billNumber: allocation.bills?.[0]?.bill_number ?? "Unknown bill",
+      billNumber: allocation.bills?.bill_number ?? "Unknown bill",
       itemType: allocation.allocated_to,
     })),
-    customerName: payment.customers?.[0]?.name ?? "Unknown customer",
+    customerName: payment.customers?.name ?? "Unknown customer",
     unallocatedAmount: Math.max(
       Number(payment.amount) -
         (payment.payment_allocations ?? []).reduce(
