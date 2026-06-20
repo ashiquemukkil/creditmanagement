@@ -55,7 +55,7 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
           <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">
             Payments
           </p>
-          <h2 className="text-3xl font-semibold tracking-tight text-stone-950">
+          <h2 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">
             Payment ledger
           </h2>
           <p className="max-w-2xl text-sm leading-7 text-stone-600">
@@ -103,8 +103,8 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
         </div>
       </form>
 
-      <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm">
-        <table className="min-w-full divide-y divide-stone-200 text-sm">
+      <div className="overflow-x-auto rounded-3xl border border-stone-200 bg-white shadow-sm">
+        <table className="min-w-[1020px] divide-y divide-stone-200 text-sm">
           <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
             <tr>
               <th className="px-5 py-4">Customer</th>

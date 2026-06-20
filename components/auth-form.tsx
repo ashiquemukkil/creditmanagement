@@ -83,12 +83,12 @@ export function AuthForm({ message, mode, redirectTo = "/dashboard" }: AuthFormP
   }
 
   return (
-    <div className="w-full max-w-md rounded-3xl border border-stone-200 bg-white p-8 shadow-sm">
+    <div className="w-full max-w-md rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
       <div className="mb-8 space-y-2">
         <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">
           Credit Management
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight text-stone-950">
+        <h1 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">
           {isSignup ? "Create your account" : "Log in"}
         </h1>
         <p className="text-sm leading-6 text-stone-600">

@@ -17,7 +17,7 @@ export default async function GoldVsDiamondExposurePage() {
     <section className="space-y-6">
       <div className="space-y-3">
         <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">Reports</p>
-        <h2 className="text-3xl font-semibold tracking-tight text-stone-950">
+        <h2 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">
           Gold vs diamond exposure
         </h2>
         <p className="max-w-3xl text-sm leading-7 text-stone-600">

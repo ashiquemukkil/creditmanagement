@@ -33,7 +33,7 @@ export default function ReportsPage() {
     <section className="space-y-6">
       <div className="space-y-3">
         <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">Reports</p>
-        <h2 className="text-3xl font-semibold tracking-tight text-stone-950">Reports center</h2>
+        <h2 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">Reports center</h2>
         <p className="max-w-3xl text-sm leading-7 text-stone-600">
           Read-only reporting is available to every signed-in role. Open any report below to review outstanding balances, exposure, and allocation trails.
         </p>

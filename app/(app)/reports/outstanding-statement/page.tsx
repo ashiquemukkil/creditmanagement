@@ -25,7 +25,7 @@ export default async function OutstandingStatementPage({ searchParams }: Outstan
     <section className="space-y-6">
       <div className="space-y-3">
         <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">Reports</p>
-        <h2 className="text-3xl font-semibold tracking-tight text-stone-950">Outstanding statement</h2>
+        <h2 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">Outstanding statement</h2>
         <p className="max-w-3xl text-sm leading-7 text-stone-600">
           Pick a customer to review all open and partial bills, sorted from most overdue to least urgent.
         </p>
@@ -58,11 +58,11 @@ export default async function OutstandingStatementPage({ searchParams }: Outstan
       </form>
 
       {selectedCustomer ? (
-        <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-3xl border border-stone-200 bg-white shadow-sm">
           <div className="border-b border-stone-200 px-5 py-4">
             <h3 className="text-lg font-semibold text-stone-950">{selectedCustomer.name}</h3>
           </div>
-          <table className="min-w-full divide-y divide-stone-200 text-sm">
+          <table className="min-w-[980px] divide-y divide-stone-200 text-sm">
             <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
               <tr>
                 <th className="px-5 py-4">Bill number</th>

@@ -53,7 +53,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
           <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">
             Customer Profile
           </p>
-          <h2 className="text-3xl font-semibold tracking-tight text-stone-950">
+          <h2 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">
             {customer.name}
           </h2>
           <p className="max-w-2xl text-sm leading-7 text-stone-600">
@@ -62,7 +62,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
         </div>
 
         {canEdit ? (
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Link
               href={`/bills/new?customerId=${customer.id}`}
               className="inline-flex rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800"
@@ -86,13 +86,13 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
         ) : null}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+      <div className="space-y-6">
+        <div className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm sm:p-5">
           <h3 className="text-lg font-semibold text-stone-950">Profile</h3>
-          <dl className="mt-6 grid gap-5 sm:grid-cols-2">
+          <dl className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-2">
             <div>
               <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Phone</dt>
-              <dd className="mt-2 text-sm text-stone-800">{customer.phone || "-"}</dd>
+              <dd className="mt-2 break-all text-sm text-stone-800">{customer.phone || "-"}</dd>
             </div>
             <div>
               <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Outstanding</dt>
@@ -110,7 +110,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
             </div>
             <div className="sm:col-span-2">
               <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Address</dt>
-              <dd className="mt-2 whitespace-pre-wrap text-sm leading-7 text-stone-800">
+              <dd className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-stone-800">
                 {customer.address || "-"}
               </dd>
             </div>
@@ -123,8 +123,8 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
             {bills.length === 0 ? (
               <p className="mt-3 text-sm leading-7 text-stone-600">No bills recorded yet.</p>
             ) : (
-              <div className="mt-4 overflow-hidden rounded-2xl border border-stone-200">
-                <table className="min-w-full divide-y divide-stone-200 text-sm">
+              <div className="mt-4 overflow-x-auto rounded-2xl border border-stone-200">
+                <table className="min-w-[760px] divide-y divide-stone-200 text-sm">
                   <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
                     <tr>
                       <th className="px-4 py-3">Bill #</th>
@@ -157,8 +157,8 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
             {payments.length === 0 ? (
               <p className="mt-3 text-sm leading-7 text-stone-600">No payments recorded yet.</p>
             ) : (
-              <div className="mt-4 overflow-hidden rounded-2xl border border-stone-200">
-                <table className="min-w-full divide-y divide-stone-200 text-sm">
+              <div className="mt-4 overflow-x-auto rounded-2xl border border-stone-200">
+                <table className="min-w-[820px] divide-y divide-stone-200 text-sm">
                   <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
                     <tr>
                       <th className="px-4 py-3">Date</th>

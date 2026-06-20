@@ -21,7 +21,7 @@ export default async function ManageUsersPage() {
         <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">
           Manage Users
         </p>
-        <h2 className="text-3xl font-semibold tracking-tight text-stone-950">
+        <h2 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">
           User roles
         </h2>
         <p className="max-w-2xl text-sm leading-7 text-stone-600">
@@ -30,8 +30,8 @@ export default async function ManageUsersPage() {
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-stone-200">
-        <table className="min-w-full divide-y divide-stone-200">
+      <div className="overflow-x-auto rounded-3xl border border-stone-200">
+        <table className="min-w-[940px] divide-y divide-stone-200">
           <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
             <tr>
               <th className="px-5 py-4">Name</th>
@@ -47,7 +47,7 @@ export default async function ManageUsersPage() {
                 <td className="px-5 py-4 font-medium text-stone-950">{user.name}</td>
                 <td className="px-5 py-4">{user.email}</td>
                 <td className="px-5 py-4">
-                  <form action={updateUserRoleAction} className="flex items-center gap-3">
+                  <form action={updateUserRoleAction} className="flex flex-wrap items-center gap-3">
                     <input type="hidden" name="userId" value={user.id} />
                     <select
                       name="role"

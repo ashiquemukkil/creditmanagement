@@ -22,7 +22,7 @@ export default async function AgingReportPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-3">
           <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">Reports</p>
-          <h2 className="text-3xl font-semibold tracking-tight text-stone-950">Aging report</h2>
+          <h2 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">Aging report</h2>
           <p className="max-w-3xl text-sm leading-7 text-stone-600">
             Outstanding balances bucketed by overdue age, split between gold and diamond exposure for every customer.
           </p>

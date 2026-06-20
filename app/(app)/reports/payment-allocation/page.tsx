@@ -24,7 +24,7 @@ export default async function PaymentAllocationPage({ searchParams }: PaymentAll
     <section className="space-y-6">
       <div className="space-y-3">
         <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">Reports</p>
-        <h2 className="text-3xl font-semibold tracking-tight text-stone-950">Payment allocation report</h2>
+        <h2 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">Payment allocation report</h2>
         <p className="max-w-3xl text-sm leading-7 text-stone-600">
           Pick a payment to inspect exactly which bills it was split across and how much was left unapplied.
         </p>
@@ -77,34 +77,36 @@ export default async function PaymentAllocationPage({ searchParams }: PaymentAll
             </div>
           </div>
 
-          <table className="min-w-full divide-y divide-stone-200 text-sm">
-            <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-              <tr>
-                <th className="px-5 py-4">Bill number</th>
-                <th className="px-5 py-4">Applied to</th>
-                <th className="px-5 py-4">Amount allocated</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-200">
-              {report.allocations.length === 0 ? (
+          <div className="overflow-x-auto rounded-2xl border border-stone-200">
+            <table className="min-w-[760px] divide-y divide-stone-200 text-sm">
+              <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
                 <tr>
-                  <td className="px-5 py-8 text-stone-500" colSpan={3}>
-                    No bill allocations for this payment.
-                  </td>
+                  <th className="px-5 py-4">Bill number</th>
+                  <th className="px-5 py-4">Applied to</th>
+                  <th className="px-5 py-4">Amount allocated</th>
                 </tr>
-              ) : (
-                report.allocations.map((allocation) => (
-                  <tr key={`${allocation.billId}-${allocation.itemType}`} className="text-stone-700">
-                    <td className="px-5 py-4 font-medium text-stone-950">{allocation.billNumber}</td>
-                    <td className="px-5 py-4 capitalize">{allocation.itemType}</td>
-                    <td className="px-5 py-4 font-medium text-stone-950">
-                      {formatCurrency(allocation.amountAllocated)}
+              </thead>
+              <tbody className="divide-y divide-stone-200">
+                {report.allocations.length === 0 ? (
+                  <tr>
+                    <td className="px-5 py-8 text-stone-500" colSpan={3}>
+                      No bill allocations for this payment.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  report.allocations.map((allocation) => (
+                    <tr key={`${allocation.billId}-${allocation.itemType}`} className="text-stone-700">
+                      <td className="px-5 py-4 font-medium text-stone-950">{allocation.billNumber}</td>
+                      <td className="px-5 py-4 capitalize">{allocation.itemType}</td>
+                      <td className="px-5 py-4 font-medium text-stone-950">
+                        {formatCurrency(allocation.amountAllocated)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
     </section>

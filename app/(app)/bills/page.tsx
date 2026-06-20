@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { DeleteBillButton } from "@/components/delete-bill-button";
 import { canManageData, getCurrentUserRole } from "@/lib/auth";
-import { billDueDateEntries, billMetals, type BillMetal, type BillStatus, listBills } from "@/lib/bills";
+import { billDueDateEntries, type BillMetal, type BillStatus, listBills } from "@/lib/bills";
 import { listCustomerOptions } from "@/lib/customers";
 
 function formatCurrency(amount: number) {
@@ -30,12 +30,6 @@ function formatDueDateSummary(bill: Parameters<typeof billDueDateEntries>[0]) {
   }
 
   return entries.map((entry) => `${entry.metal}: ${formatDate(entry.dueDate)}`).join(" / ");
-}
-
-function itemTypeBadgeClass(itemType: BillMetal) {
-  return itemType === "gold"
-    ? "bg-amber-100 text-amber-800"
-    : "bg-sky-100 text-sky-800";
 }
 
 function statusBadgeClass(status: BillStatus) {
@@ -77,7 +71,7 @@ export default async function BillsPage({ searchParams }: BillsPageProps) {
           <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">
             Bills
           </p>
-          <h2 className="text-3xl font-semibold tracking-tight text-stone-950">
+          <h2 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">
             Bill ledger
           </h2>
           <p className="max-w-2xl text-sm leading-7 text-stone-600">
@@ -139,8 +133,8 @@ export default async function BillsPage({ searchParams }: BillsPageProps) {
         </div>
       </form>
 
-      <div className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm">
-        <table className="min-w-full divide-y divide-stone-200 text-sm">
+      <div className="overflow-x-auto rounded-3xl border border-stone-200 bg-white shadow-sm">
+        <table className="min-w-[1180px] divide-y divide-stone-200 text-sm">
           <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
             <tr>
               <th className="px-5 py-4">Bill number</th>

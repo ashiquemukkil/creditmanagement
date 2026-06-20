@@ -26,7 +26,7 @@ export default async function DashboardPage() {
     <section className="space-y-6">
       <div className="space-y-3">
         <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">Dashboard</p>
-        <h2 className="text-3xl font-semibold tracking-tight text-stone-950">Credit overview</h2>
+        <h2 className="text-2xl font-semibold tracking-tight text-stone-950 sm:text-3xl">Credit overview</h2>
         <p className="max-w-3xl text-sm leading-7 text-stone-600">
           Shop-wide visibility into outstanding balances, overdue pressure, and the latest billing and payment activity.
         </p>
@@ -52,7 +52,7 @@ export default async function DashboardPage() {
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-lg font-semibold text-stone-950">Top overdue customers</h3>
             <Link href="/reports/aging-report" className="text-sm font-medium text-amber-700 hover:text-amber-800">
               Open aging report
