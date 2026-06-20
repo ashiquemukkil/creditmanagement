@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useTransition } from "react";
+import { useState } from "react";
 
 import { createPaymentAction } from "@/app/(app)/payments/actions";
 import { CustomerPicker } from "@/components/customer-picker";
@@ -26,38 +26,35 @@ export function PaymentForm({
 }: PaymentFormProps) {
   const router = useRouter();
   const { showError, showSuccess } = useToast();
-  const [isPending, startTransition] = useTransition();
-  const isSubmittingRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (isSubmittingRef.current) {
+    if (isSubmitting) {
       return;
     }
 
-    isSubmittingRef.current = true;
+    setIsSubmitting(true);
     const formData = new FormData(event.currentTarget);
 
-    startTransition(async () => {
-      try {
-        const result = await createPaymentAction(formData);
+    try {
+      const result = await createPaymentAction(formData);
 
-        if (!result.ok) {
-          showError(result.message);
-          return;
-        }
-
-        showSuccess(result.message);
-
-        if (result.redirectTo) {
-          router.push(result.redirectTo);
-          router.refresh();
-        }
-      } finally {
-        isSubmittingRef.current = false;
+      if (!result.ok) {
+        showError(result.message);
+        return;
       }
-    });
+
+      showSuccess(result.message);
+
+      if (result.redirectTo) {
+        router.push(result.redirectTo);
+        router.refresh();
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -68,7 +65,7 @@ export function PaymentForm({
         </p>
         <h2 className="text-3xl font-semibold tracking-tight text-stone-950">Add payment</h2>
         <p className="max-w-2xl text-sm leading-7 text-stone-600">
-          Record a payment first. Allocation across bills will be added in the next step.
+          Record a payment and it will be allocated automatically across overdue bills.
         </p>
       </div>
 
@@ -117,10 +114,10 @@ export function PaymentForm({
         <div>
           <button
             type="submit"
-            disabled={isPending}
+            disabled={isSubmitting}
             className="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800"
           >
-            {isPending ? "Creating..." : "Create payment"}
+            {isSubmitting ? "Creating..." : "Create payment"}
           </button>
         </div>
       </form>

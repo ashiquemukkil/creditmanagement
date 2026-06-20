@@ -210,24 +210,23 @@ export async function createPaymentFromEntry(
     throw new Error("Selected customer was not found.");
   }
 
-  const { data, error } = await db
-    .from("payments")
-    .insert({
-      amount: input.amount,
-      created_by: createdById,
-      customer_id: input.customerId,
-      notes: input.notes,
-      payment_date: input.paymentDate,
-    })
-    .select("id")
-    .single();
+  const { data, error } = await db.rpc("create_payment_with_allocations", {
+    p_amount: input.amount,
+    p_customer_id: input.customerId,
+    p_notes: input.notes,
+    p_payment_date: input.paymentDate,
+  });
 
   if (error) {
     throw error;
   }
 
+  if (!data || typeof data !== "string") {
+    throw new Error("Payment could not be created.");
+  }
+
   return {
     customerId: input.customerId,
-    paymentId: data as string,
+    paymentId: data,
   };
 }

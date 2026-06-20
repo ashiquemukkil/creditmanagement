@@ -6,9 +6,36 @@ const publicRoutes = new Set(["/login", "/signup"]);
 
 export async function proxy(request: NextRequest) {
   const { response, supabase } = updateSession(request);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  let hasAuthRefreshRace = false;
+
+  try {
+    const {
+      data: { user: resolvedUser },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (error) {
+      if ((error as { status?: number }).status !== 409) {
+        throw error;
+      }
+
+      hasAuthRefreshRace = true;
+    } else {
+      user = resolvedUser;
+    }
+  } catch (error) {
+    if ((error as { status?: number }).status !== 409) {
+      throw error;
+    }
+
+    hasAuthRefreshRace = true;
+  }
+
+  if (hasAuthRefreshRace) {
+    return response;
+  }
+
   const { pathname, search } = request.nextUrl;
   const isPublicRoute = publicRoutes.has(pathname);
 
