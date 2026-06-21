@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type CustomerRecord = {
   address: string | null;
+  advance_amount: number;
   created_at: string;
   created_by: string | null;
   diamond_credit_days: number;
@@ -33,7 +34,7 @@ export async function listCustomers(): Promise<CustomerListItem[]> {
       supabase
         .from("customers")
         .select(
-          "id, name, phone, address, gold_credit_days, diamond_credit_days, created_at, created_by",
+          "id, name, phone, address, gold_credit_days, diamond_credit_days, advance_amount, created_at, created_by",
         )
         .order("created_at", { ascending: false }),
       supabase
@@ -85,7 +86,7 @@ export async function getCustomerById(customerId: string): Promise<CustomerListI
   const { data: customer, error: customerError } = await supabase
     .from("customers")
     .select(
-      "id, name, phone, address, gold_credit_days, diamond_credit_days, created_at, created_by",
+      "id, name, phone, address, gold_credit_days, diamond_credit_days, advance_amount, created_at, created_by",
     )
     .eq("id", customerId)
     .maybeSingle();

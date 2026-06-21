@@ -101,6 +101,12 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
               </dd>
             </div>
             <div>
+              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Advance</dt>
+              <dd className="mt-2 text-sm font-medium text-stone-950">
+                {formatCurrency(Number(customer.advance_amount ?? 0))}
+              </dd>
+            </div>
+            <div>
               <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Gold credit days</dt>
               <dd className="mt-2 text-sm text-stone-800">{customer.gold_credit_days}</dd>
             </div>

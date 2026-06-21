@@ -42,12 +42,17 @@ Run the SQL files in your Supabase SQL Editor in this order:
 1. `sql/001_init.sql`
 2. `sql/002_auth_setup.sql`
 3. `sql/003_payment_allocation_engine.sql`
+4. `sql/004_bill_dual_amounts.sql`
+5. `sql/005_bill_separate_due_dates.sql`
+6. `sql/006_performance_indexes.sql`
+7. `sql/007_customer_advance_balance.sql`
 
 What they do:
 
 - `001_init.sql` creates the business tables, indexes, due-date trigger, and RLS policies.
 - `002_auth_setup.sql` syncs Supabase Auth users into `public.users`.
 - `003_payment_allocation_engine.sql` installs the payment allocation RPC used by manual and bulk payment entry.
+- `007_customer_advance_balance.sql` adds `customers.advance_amount`, stores overpayments as advance, and auto-applies advance to future bills.
 
 ## Create The First Admin User
 

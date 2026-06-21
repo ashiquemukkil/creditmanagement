@@ -61,6 +61,7 @@ model Customer {
   address           String?
   goldCreditDays    Int
   diamondCreditDays Int
+  advanceAmount     Decimal   @default(0) @db.Decimal(12, 2)
   creditBalance     Decimal   @default(0) @db.Decimal(12, 2)
   notes             String?
   isActive          Boolean   @default(true)

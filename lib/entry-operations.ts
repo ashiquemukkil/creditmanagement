@@ -183,6 +183,14 @@ export async function createBillFromEntry(
     throw error;
   }
 
+  const { error: advanceAllocationError } = await db.rpc("apply_customer_advance_to_open_bills", {
+    p_customer_id: input.customerId,
+  });
+
+  if (advanceAllocationError) {
+    throw advanceAllocationError;
+  }
+
   return {
     billId: data.id,
     billNumber: data.bill_number,
