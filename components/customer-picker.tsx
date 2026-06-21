@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 type CustomerOption = {
   id: string;
@@ -12,6 +12,7 @@ type CustomerPickerProps = {
   customers: CustomerOption[];
   defaultCustomerId?: string;
   hiddenInputName?: string;
+  onSelectedIdChange?: (customerId: string) => void;
 };
 
 function labelForCustomer(customer: CustomerOption) {
@@ -22,6 +23,7 @@ export function CustomerPicker({
   customers,
   defaultCustomerId,
   hiddenInputName = "customer_id",
+  onSelectedIdChange,
 }: CustomerPickerProps) {
   const listId = useId();
   const initialCustomer = customers.find((customer) => customer.id === defaultCustomerId);
@@ -30,6 +32,10 @@ export function CustomerPicker({
     (customer) => labelForCustomer(customer).toLowerCase() === displayValue.trim().toLowerCase(),
   );
   const selectedId = matchedCustomer?.id ?? "";
+
+  useEffect(() => {
+    onSelectedIdChange?.(selectedId);
+  }, [onSelectedIdChange, selectedId]);
 
   return (
     <div className="space-y-2">

@@ -19,6 +19,12 @@ export type PaymentEntryInput = {
   paymentDate: string;
 };
 
+type ManualAllocationInput = {
+  allocatedTo: "gold" | "diamond";
+  amount: number;
+  billId: string;
+};
+
 export function parseBillEntryInput(input: {
   billDate: string;
   billNumber: string;
@@ -202,6 +208,9 @@ export async function createPaymentFromEntry(
   input: PaymentEntryInput,
   createdById: string,
   supabase?: SupabaseClient,
+  options?: {
+    manualAllocations?: ManualAllocationInput[];
+  },
 ) {
   const db = supabase ?? (await createSupabaseServerClient());
   const { data: customer, error: customerError } = await db
@@ -218,12 +227,26 @@ export async function createPaymentFromEntry(
     throw new Error("Selected customer was not found.");
   }
 
-  const { data, error } = await db.rpc("create_payment_with_allocations", {
-    p_amount: input.amount,
-    p_customer_id: input.customerId,
-    p_notes: input.notes,
-    p_payment_date: input.paymentDate,
-  });
+  const hasManualAllocations = options?.manualAllocations !== undefined;
+  const { data, error } = hasManualAllocations
+    ? await db.rpc("create_payment_with_manual_allocations", {
+        p_allocations:
+          options.manualAllocations?.map((allocation) => ({
+            allocatedTo: allocation.allocatedTo,
+            amount: allocation.amount,
+            billId: allocation.billId,
+          })) ?? [],
+        p_amount: input.amount,
+        p_customer_id: input.customerId,
+        p_notes: input.notes,
+        p_payment_date: input.paymentDate,
+      })
+    : await db.rpc("create_payment_with_allocations", {
+        p_amount: input.amount,
+        p_customer_id: input.customerId,
+        p_notes: input.notes,
+        p_payment_date: input.paymentDate,
+      });
 
   if (error) {
     throw error;
