@@ -26,6 +26,11 @@ const reports = [
     href: "/reports/payment-allocation",
     title: "Payment allocation report",
   },
+  {
+    description: "Month-view calendar of bills and payments with paid-progress bars and allocation hover details.",
+    href: "/reports/calendar",
+    title: "Calendar report",
+  },
 ];
 
 export default function ReportsPage() {

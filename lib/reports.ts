@@ -43,6 +43,47 @@ export type LedgerEntry = {
   reference: string;
 };
 
+export type CalendarBillEntry = {
+  billDate: string;
+  billId: string;
+  billNumber: string;
+  customerId: string;
+  customerName: string;
+  diamondAmount: number;
+  diamondPaid: number;
+  goldAmount: number;
+  goldPaid: number;
+  paidTotal: number;
+  status: "open" | "partial" | "closed";
+  totalAmount: number;
+};
+
+export type CalendarPaymentEntry = {
+  allocations: Array<{
+    allocatedTo: "gold" | "diamond";
+    amountAllocated: number;
+    billId: string;
+    billNumber: string;
+  }>;
+  amount: number;
+  customerId: string;
+  customerName: string;
+  notes: string | null;
+  paymentDate: string;
+  paymentId: string;
+};
+
+export type CalendarDayEntry = {
+  bills: CalendarBillEntry[];
+  date: string;
+  payments: CalendarPaymentEntry[];
+};
+
+export type CalendarReport = {
+  days: CalendarDayEntry[];
+  month: string;
+};
+
 type BillReportRow = {
   amount_paid_diamond: number;
   amount_paid_gold: number;
@@ -406,6 +447,150 @@ export async function getPaymentAllocationReport(paymentId: string) {
     paymentDate: data.payment_date as string,
     paymentId: data.id as string,
     unallocatedAmount: Math.max(totalAmount - allocatedAmount, 0),
+  };
+}
+
+export async function getCalendarReport(month: string, customerId?: string): Promise<CalendarReport> {
+  const monthRegex = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+  if (!monthRegex.test(month)) {
+    throw new Error("Invalid month format. Expected YYYY-MM.");
+  }
+
+  const monthStart = `${month}-01`;
+  const [yearPart, monthPart] = month.split("-");
+  const startDate = new Date(Number(yearPart), Number(monthPart) - 1, 1);
+  const nextMonthDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 1);
+  const nextMonth = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}-01`;
+
+  const supabase = await createSupabaseServerClient();
+  let billsQuery = supabase
+    .from("bills")
+    .select(
+      "id, bill_number, customer_id, bill_date, gold_amount, diamond_amount, amount_paid_gold, amount_paid_diamond, status, customers(name)",
+    )
+    .gte("bill_date", monthStart)
+    .lt("bill_date", nextMonth)
+    .order("bill_date", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  let paymentsQuery = supabase
+    .from("payments")
+    .select(
+      "id, customer_id, payment_date, amount, notes, customers(name), payment_allocations(id, bill_id, allocated_to, amount_allocated, bills(bill_number))",
+    )
+    .gte("payment_date", monthStart)
+    .lt("payment_date", nextMonth)
+    .order("payment_date", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (customerId) {
+    billsQuery = billsQuery.eq("customer_id", customerId);
+    paymentsQuery = paymentsQuery.eq("customer_id", customerId);
+  }
+
+  const [{ data: bills, error: billsError }, { data: payments, error: paymentsError }] =
+    await Promise.all([billsQuery, paymentsQuery]);
+
+  if (billsError) {
+    throw billsError;
+  }
+
+  if (paymentsError) {
+    throw paymentsError;
+  }
+
+  const daysByDate = new Map<string, CalendarDayEntry>();
+  const ensureDay = (date: string) => {
+    if (!daysByDate.has(date)) {
+      daysByDate.set(date, {
+        bills: [],
+        date,
+        payments: [],
+      });
+    }
+
+    return daysByDate.get(date)!;
+  };
+
+  ((bills ?? []) as Array<{
+    amount_paid_diamond: number;
+    amount_paid_gold: number;
+    bill_date: string;
+    bill_number: string;
+    customer_id: string;
+    customers: Array<{ name: string }> | null;
+    diamond_amount: number;
+    gold_amount: number;
+    id: string;
+    status: "open" | "partial" | "closed";
+  }>).forEach((bill) => {
+    const day = ensureDay(bill.bill_date);
+    const goldAmount = Number(bill.gold_amount);
+    const diamondAmount = Number(bill.diamond_amount);
+    const goldPaid = Number(bill.amount_paid_gold);
+    const diamondPaid = Number(bill.amount_paid_diamond);
+
+    day.bills.push({
+      billDate: bill.bill_date,
+      billId: bill.id,
+      billNumber: bill.bill_number,
+      customerId: bill.customer_id,
+      customerName: bill.customers?.[0]?.name ?? "Unknown customer",
+      diamondAmount,
+      diamondPaid,
+      goldAmount,
+      goldPaid,
+      paidTotal: goldPaid + diamondPaid,
+      status: bill.status,
+      totalAmount: goldAmount + diamondAmount,
+    });
+  });
+
+  ((payments ?? []) as Array<{
+    amount: number;
+    customer_id: string;
+    customers: Array<{ name: string }> | null;
+    id: string;
+    notes: string | null;
+    payment_allocations: Array<{
+      allocated_to: "gold" | "diamond";
+      amount_allocated: number;
+      bill_id: string;
+      bills:
+        | {
+            bill_number: string;
+          }
+        | Array<{ bill_number: string }>
+        | null;
+      id: string;
+    }> | null;
+    payment_date: string;
+  }>).forEach((payment) => {
+    const day = ensureDay(payment.payment_date);
+
+    day.payments.push({
+      allocations: (payment.payment_allocations ?? []).map((allocation) => ({
+        allocatedTo: allocation.allocated_to,
+        amountAllocated: Number(allocation.amount_allocated),
+        billId: allocation.bill_id,
+        billNumber:
+          (Array.isArray(allocation.bills)
+            ? allocation.bills[0]?.bill_number
+            : allocation.bills?.bill_number) ?? "Unknown bill",
+      })),
+      amount: Number(payment.amount),
+      customerId: payment.customer_id,
+      customerName: payment.customers?.[0]?.name ?? "Unknown customer",
+      notes: payment.notes,
+      paymentDate: payment.payment_date,
+      paymentId: payment.id,
+    });
+  });
+
+  return {
+    days: Array.from(daysByDate.values()).sort((left, right) => left.date.localeCompare(right.date)),
+    month,
   };
 }
 
