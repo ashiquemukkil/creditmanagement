@@ -5,8 +5,24 @@ create table if not exists public.users (
   name text not null,
   email text not null unique,
   role text not null check (role in ('admin', 'collaborator', 'viewer')),
+  is_active boolean not null default false,
   created_at timestamptz not null default timezone('utc', now())
 );
+
+create table if not exists public.user_invitations (
+  id uuid primary key default gen_random_uuid(),
+  email text not null,
+  role text not null check (role in ('admin', 'collaborator', 'viewer')),
+  invited_by uuid not null references public.users (id) on delete cascade,
+  accepted_by uuid references public.users (id) on delete set null,
+  accepted_at timestamptz,
+  created_at timestamptz not null default timezone('utc', now()),
+  constraint user_invitations_email_lowercase check (email = lower(email))
+);
+
+create unique index if not exists user_invitations_pending_email_idx
+on public.user_invitations (email)
+where accepted_at is null;
 
 create table if not exists public.customers (
   id uuid primary key default gen_random_uuid(),
@@ -127,12 +143,14 @@ set search_path = public
 as $$
   select u.role
   from public.users as u
-  where u.id = auth.uid();
+  where u.id = auth.uid()
+    and u.is_active is true;
 $$;
 
 grant execute on function public.current_app_role() to authenticated;
 
 alter table public.users enable row level security;
+alter table public.user_invitations enable row level security;
 alter table public.customers enable row level security;
 alter table public.bills enable row level security;
 alter table public.payments enable row level security;
@@ -143,7 +161,7 @@ create policy users_select_authenticated
 on public.users
 for select
 to authenticated
-using (true);
+using (auth.uid() = id or public.current_app_role() is not null);
 
 drop policy if exists users_insert_admin on public.users;
 create policy users_insert_admin
@@ -167,12 +185,41 @@ for delete
 to authenticated
 using (public.current_app_role() = 'admin');
 
+drop policy if exists user_invitations_select_admin on public.user_invitations;
+create policy user_invitations_select_admin
+on public.user_invitations
+for select
+to authenticated
+using (public.current_app_role() = 'admin');
+
+drop policy if exists user_invitations_insert_admin on public.user_invitations;
+create policy user_invitations_insert_admin
+on public.user_invitations
+for insert
+to authenticated
+with check (public.current_app_role() = 'admin');
+
+drop policy if exists user_invitations_update_admin on public.user_invitations;
+create policy user_invitations_update_admin
+on public.user_invitations
+for update
+to authenticated
+using (public.current_app_role() = 'admin')
+with check (public.current_app_role() = 'admin');
+
+drop policy if exists user_invitations_delete_admin on public.user_invitations;
+create policy user_invitations_delete_admin
+on public.user_invitations
+for delete
+to authenticated
+using (public.current_app_role() = 'admin');
+
 drop policy if exists customers_select_authenticated on public.customers;
 create policy customers_select_authenticated
 on public.customers
 for select
 to authenticated
-using (true);
+using (public.current_app_role() is not null);
 
 drop policy if exists customers_insert_team on public.customers;
 create policy customers_insert_team
@@ -201,7 +248,7 @@ create policy bills_select_authenticated
 on public.bills
 for select
 to authenticated
-using (true);
+using (public.current_app_role() is not null);
 
 drop policy if exists bills_insert_team on public.bills;
 create policy bills_insert_team
@@ -230,7 +277,7 @@ create policy payments_select_authenticated
 on public.payments
 for select
 to authenticated
-using (true);
+using (public.current_app_role() is not null);
 
 drop policy if exists payments_insert_team on public.payments;
 create policy payments_insert_team
@@ -259,7 +306,7 @@ create policy payment_allocations_select_authenticated
 on public.payment_allocations
 for select
 to authenticated
-using (true);
+using (public.current_app_role() is not null);
 
 drop policy if exists payment_allocations_insert_team on public.payment_allocations;
 create policy payment_allocations_insert_team

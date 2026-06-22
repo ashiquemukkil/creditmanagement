@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 
-import { getCurrentUserRole, listUsers } from "@/lib/auth";
+import { getCurrentUserRole, listInvitations, listUsers } from "@/lib/auth";
 
-import { updateUserRoleAction } from "./actions";
+import { createInvitationAction, updateUserRoleAction } from "./actions";
 
 const roles = ["admin", "collaborator", "viewer"] as const;
 
@@ -13,7 +13,7 @@ export default async function ManageUsersPage() {
     redirect("/dashboard");
   }
 
-  const users = await listUsers();
+  const [users, invitations] = await Promise.all([listUsers(), listInvitations()]);
 
   return (
     <section className="space-y-6">
@@ -25,18 +25,93 @@ export default async function ManageUsersPage() {
           User roles
         </h2>
         <p className="max-w-2xl text-sm leading-7 text-stone-600">
-          Only admins can change roles. New sign-ups are created as viewers and can be
-          promoted here after your first admin account exists.
+          Only admins can change roles. Invitations are issued by email with a target role,
+          and invited users activate automatically when they sign up with that email.
         </p>
       </div>
 
+      <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+        <h3 className="text-lg font-semibold text-stone-950">Invite a user</h3>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+          Create an email invitation and the app will send a signup link for that role.
+        </p>
+        <form action={createInvitationAction} className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-end">
+          <label className="block flex-1 space-y-2 text-sm font-medium text-stone-700">
+            <span>Email</span>
+            <input
+              required
+              name="email"
+              type="email"
+              className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-600"
+              placeholder="staff@business.com"
+            />
+          </label>
+          <label className="block space-y-2 text-sm font-medium text-stone-700">
+            <span>Role</span>
+            <select
+              name="role"
+              defaultValue="collaborator"
+              className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-950"
+            >
+              {roles.map((availableRole) => (
+                <option key={availableRole} value={availableRole}>
+                  {availableRole}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            className="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800"
+          >
+            Send invitation
+          </button>
+        </form>
+      </div>
+
       <div className="overflow-x-auto rounded-3xl border border-stone-200">
-        <table className="min-w-[940px] divide-y divide-stone-200">
+        <table className="min-w-[760px] divide-y divide-stone-200">
+          <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+            <tr>
+              <th className="px-5 py-4">Invited email</th>
+              <th className="px-5 py-4">Role</th>
+              <th className="px-5 py-4">Status</th>
+              <th className="px-5 py-4">Created</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-stone-200 bg-white text-sm text-stone-700">
+            {invitations.map((invitation) => (
+              <tr key={invitation.id}>
+                <td className="px-5 py-4 font-medium text-stone-950">{invitation.email}</td>
+                <td className="px-5 py-4">{invitation.role}</td>
+                <td className="px-5 py-4">
+                  <span
+                    className={
+                      invitation.accepted_at
+                        ? "rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700"
+                        : "rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700"
+                    }
+                  >
+                    {invitation.accepted_at ? "Joined" : "Pending"}
+                  </span>
+                </td>
+                <td className="px-5 py-4 text-stone-500">
+                  {new Date(invitation.created_at).toLocaleDateString()}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="overflow-x-auto rounded-3xl border border-stone-200">
+        <table className="min-w-[980px] divide-y divide-stone-200">
           <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
             <tr>
               <th className="px-5 py-4">Name</th>
               <th className="px-5 py-4">Email</th>
               <th className="px-5 py-4">Role</th>
+              <th className="px-5 py-4">Status</th>
               <th className="px-5 py-4">Created</th>
               <th className="px-5 py-4">Action</th>
             </tr>
@@ -67,6 +142,17 @@ export default async function ManageUsersPage() {
                       Save
                     </button>
                   </form>
+                </td>
+                <td className="px-5 py-4">
+                  <span
+                    className={
+                      user.is_active
+                        ? "rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700"
+                        : "rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700"
+                    }
+                  >
+                    {user.is_active ? "Active" : "Pending"}
+                  </span>
                 </td>
                 <td className="px-5 py-4 text-stone-500">
                   {new Date(user.created_at).toLocaleDateString()}

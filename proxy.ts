@@ -4,9 +4,17 @@ import { updateSession } from "@/lib/supabase/middleware";
 
 const publicRoutes = new Set(["/login", "/signup"]);
 
+function isMissingAuthSession(error: unknown) {
+  return (
+    error instanceof Error &&
+    (error.name === "AuthSessionMissingError" || error.message === "Auth session missing!")
+  );
+}
+
 export async function proxy(request: NextRequest) {
   const { response, supabase } = updateSession(request);
   let user = null;
+  let isActive = false;
   let hasAuthRefreshRace = false;
 
   try {
@@ -16,20 +24,24 @@ export async function proxy(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (error) {
-      if ((error as { status?: number }).status !== 409) {
+      if (isMissingAuthSession(error)) {
+        user = null;
+      } else if ((error as { status?: number }).status !== 409) {
         throw error;
+      } else {
+        hasAuthRefreshRace = true;
       }
-
-      hasAuthRefreshRace = true;
     } else {
       user = resolvedUser;
     }
   } catch (error) {
-    if ((error as { status?: number }).status !== 409) {
+    if (isMissingAuthSession(error)) {
+      user = null;
+    } else if ((error as { status?: number }).status !== 409) {
       throw error;
+    } else {
+      hasAuthRefreshRace = true;
     }
-
-    hasAuthRefreshRace = true;
   }
 
   if (hasAuthRefreshRace) {
@@ -38,6 +50,20 @@ export async function proxy(request: NextRequest) {
 
   const { pathname, search } = request.nextUrl;
   const isPublicRoute = publicRoutes.has(pathname);
+
+  if (user) {
+    const { data, error } = await supabase
+      .from("users")
+      .select("is_active")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    isActive = data?.is_active ?? false;
+  }
 
   if (!user && !isPublicRoute) {
     const loginUrl = request.nextUrl.clone();
@@ -48,6 +74,26 @@ export async function proxy(request: NextRequest) {
     }
 
     return NextResponse.redirect(loginUrl);
+  }
+
+  if (user && !isActive) {
+    await supabase.auth.signOut();
+
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set(
+      "message",
+      "Your account request was received. Wait for an admin to activate it.",
+    );
+
+    const redirectResponse = NextResponse.redirect(loginUrl);
+
+    response.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie);
+    });
+
+    return redirectResponse;
   }
 
   if (user && isPublicRoute) {

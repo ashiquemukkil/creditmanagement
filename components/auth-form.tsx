@@ -9,12 +9,18 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 type AuthMode = "login" | "signup";
 
 type AuthFormProps = {
+  defaultEmail?: string;
   message?: string;
   mode: AuthMode;
   redirectTo?: string;
 };
 
-export function AuthForm({ message, mode, redirectTo = "/dashboard" }: AuthFormProps) {
+export function AuthForm({
+  defaultEmail,
+  message,
+  mode,
+  redirectTo = "/dashboard",
+}: AuthFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -54,14 +60,13 @@ export function AuthForm({ message, mode, redirectTo = "/dashboard" }: AuthFormP
         router.refresh();
 
         if (data.session) {
-          router.replace(redirectTo);
-          return;
+          await supabase.auth.signOut();
         }
 
         router.replace(
           "/login?message=" +
             encodeURIComponent(
-              "Account created. If email confirmation is enabled in Supabase, confirm your email before logging in.",
+              "Account created. If your email was invited, you can log in now. Otherwise wait for admin activation.",
             ),
         );
         return;
@@ -93,7 +98,7 @@ export function AuthForm({ message, mode, redirectTo = "/dashboard" }: AuthFormP
         </h1>
         <p className="text-sm leading-6 text-stone-600">
           {isSignup
-            ? "New users start as viewers. Promote admins and collaborators from Supabase or the admin page."
+            ? "Use the same email your admin invited. Uninvited signups stay pending until an admin activates them."
             : "Use your Supabase email and password to access the app."}
         </p>
       </div>
@@ -116,6 +121,7 @@ export function AuthForm({ message, mode, redirectTo = "/dashboard" }: AuthFormP
           <span>Email</span>
           <input
             required
+            defaultValue={defaultEmail}
             name="email"
             type="email"
             className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-600"
