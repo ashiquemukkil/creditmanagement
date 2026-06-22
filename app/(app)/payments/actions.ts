@@ -150,8 +150,7 @@ export async function listAllocatableBillLinesAction(
       id: string;
     }> | null) ?? [];
 
-  return billRows
-    .flatMap((bill) => {
+  const lines = billRows.flatMap((bill) => {
       const lines: AllocatableBillLine[] = [];
       const outstandingGoldAmount = billOutstandingGoldAmount(bill);
       const outstandingDiamondAmount = billOutstandingDiamondAmount(bill);
@@ -183,20 +182,93 @@ export async function listAllocatableBillLinesAction(
       }
 
       return lines;
-    })
-    .sort((left, right) => {
-      if (left.daysOverdue !== right.daysOverdue) {
-        return right.daysOverdue - left.daysOverdue;
-      }
-
-      if (left.allocatedTo !== right.allocatedTo) {
-        return left.allocatedTo === "gold" ? -1 : 1;
-      }
-
-      if (left.billDate !== right.billDate) {
-        return left.billDate.localeCompare(right.billDate);
-      }
-
-      return left.billId.localeCompare(right.billId);
     });
+
+  const billPriority = new Map<
+    string,
+    {
+      billDate: string;
+      earliestDueDate: string | null;
+      maxDaysOverdue: number;
+    }
+  >();
+
+  for (const line of lines) {
+    const existing = billPriority.get(line.billId);
+
+    if (!existing) {
+      billPriority.set(line.billId, {
+        billDate: line.billDate,
+        earliestDueDate: line.dueDate,
+        maxDaysOverdue: line.daysOverdue,
+      });
+      continue;
+    }
+
+    billPriority.set(line.billId, {
+      billDate: existing.billDate <= line.billDate ? existing.billDate : line.billDate,
+      earliestDueDate:
+        existing.earliestDueDate === null
+          ? line.dueDate
+          : line.dueDate === null
+            ? existing.earliestDueDate
+            : existing.earliestDueDate <= line.dueDate
+              ? existing.earliestDueDate
+              : line.dueDate,
+      maxDaysOverdue: Math.max(existing.maxDaysOverdue, line.daysOverdue),
+    });
+  }
+
+  return lines.sort((left, right) => {
+    const leftBill = billPriority.get(left.billId);
+    const rightBill = billPriority.get(right.billId);
+
+    if (leftBill && rightBill) {
+      if (leftBill.maxDaysOverdue !== rightBill.maxDaysOverdue) {
+        return rightBill.maxDaysOverdue - leftBill.maxDaysOverdue;
+      }
+
+      if (leftBill.earliestDueDate !== rightBill.earliestDueDate) {
+        if (leftBill.earliestDueDate === null) {
+          return 1;
+        }
+
+        if (rightBill.earliestDueDate === null) {
+          return -1;
+        }
+
+        return leftBill.earliestDueDate.localeCompare(rightBill.earliestDueDate);
+      }
+
+      if (leftBill.billDate !== rightBill.billDate) {
+        return leftBill.billDate.localeCompare(rightBill.billDate);
+      }
+    }
+
+    if (left.billId !== right.billId) {
+      return left.billId.localeCompare(right.billId);
+    }
+
+    if (left.daysOverdue !== right.daysOverdue) {
+      return right.daysOverdue - left.daysOverdue;
+    }
+
+    if (left.dueDate !== right.dueDate) {
+      if (left.dueDate === null) {
+        return 1;
+      }
+
+      if (right.dueDate === null) {
+        return -1;
+      }
+
+      return left.dueDate.localeCompare(right.dueDate);
+    }
+
+    if (left.allocatedTo !== right.allocatedTo) {
+      return left.allocatedTo === "gold" ? -1 : 1;
+    }
+
+    return 0;
+  });
 }

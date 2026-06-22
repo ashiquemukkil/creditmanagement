@@ -125,20 +125,74 @@ export function flattenPayableLines(bills: AllocationBill[], paymentDate: Date):
 }
 
 export function sortPayableLines(lines: PayableLine[]) {
+  const billPriority = new Map<
+    string,
+    {
+      billDate: Date;
+      earliestDueDate: Date;
+      maxDaysOverdue: number;
+    }
+  >();
+
+  for (const line of lines) {
+    const existing = billPriority.get(line.billId);
+
+    if (!existing) {
+      billPriority.set(line.billId, {
+        billDate: line.billDate,
+        earliestDueDate: line.dueDate,
+        maxDaysOverdue: line.daysOverdue,
+      });
+      continue;
+    }
+
+    billPriority.set(line.billId, {
+      billDate: existing.billDate.getTime() <= line.billDate.getTime() ? existing.billDate : line.billDate,
+      earliestDueDate:
+        existing.earliestDueDate.getTime() <= line.dueDate.getTime()
+          ? existing.earliestDueDate
+          : line.dueDate,
+      maxDaysOverdue: Math.max(existing.maxDaysOverdue, line.daysOverdue),
+    });
+  }
+
   const sorted = lines
     .map((line) => ({ ...line, sortWasTieBreak: false }))
     .sort((left, right) => {
+      const leftBillPriority = billPriority.get(left.billId);
+      const rightBillPriority = billPriority.get(right.billId);
+
+      if (leftBillPriority && rightBillPriority) {
+        if (leftBillPriority.maxDaysOverdue !== rightBillPriority.maxDaysOverdue) {
+          return rightBillPriority.maxDaysOverdue - leftBillPriority.maxDaysOverdue;
+        }
+
+        const dueDateDiff =
+          leftBillPriority.earliestDueDate.getTime() - rightBillPriority.earliestDueDate.getTime();
+        if (dueDateDiff !== 0) {
+          return dueDateDiff;
+        }
+
+        const billDateDiff = leftBillPriority.billDate.getTime() - rightBillPriority.billDate.getTime();
+        if (billDateDiff !== 0) {
+          return billDateDiff;
+        }
+      }
+
+      if (left.billId !== right.billId) {
+        return left.billId.localeCompare(right.billId);
+      }
+
       if (left.daysOverdue !== right.daysOverdue) {
         return right.daysOverdue - left.daysOverdue;
       }
 
-      if (left.portion !== right.portion) {
-        return left.portion === "GOLD" ? -1 : 1;
+      if (left.dueDate.getTime() !== right.dueDate.getTime()) {
+        return left.dueDate.getTime() - right.dueDate.getTime();
       }
 
-      const billDateDiff = left.billDate.getTime() - right.billDate.getTime();
-      if (billDateDiff !== 0) {
-        return billDateDiff;
+      if (left.portion !== right.portion) {
+        return left.portion === "GOLD" ? -1 : 1;
       }
 
       return left.billId.localeCompare(right.billId);
@@ -151,6 +205,7 @@ export function sortPayableLines(lines: PayableLine[]) {
       sorted.some(
         (other, otherIndex) =>
           otherIndex > index &&
+          other.billId === line.billId &&
           other.daysOverdue === line.daysOverdue &&
           other.portion === "DIAMOND",
       ),
