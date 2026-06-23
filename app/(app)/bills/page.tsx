@@ -26,7 +26,9 @@ function formatDueDateSummary(bill: Parameters<typeof billDueDateEntries>[0]) {
   const entries = billDueDateEntries(bill);
 
   if (entries.length === 0) {
-    return formatDate(bill.due_date);
+    const fallbackDueDate = bill.gold_due_date ?? bill.diamond_due_date;
+
+    return fallbackDueDate ? formatDate(fallbackDueDate) : "-";
   }
 
   return entries.map((entry) => `${entry.metal}: ${formatDate(entry.dueDate)}`).join(" / ");
