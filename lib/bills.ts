@@ -189,6 +189,38 @@ export function billDueDateSortValue(
     .sort((left, right) => left.localeCompare(right))[0] ?? null;
 }
 
+export async function getBillById(id: string): Promise<BillListItem | null> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("bills")
+    .select(
+      "id, bill_number, customer_id, customer:customer_id(name), bill_date, gold_amount, diamond_amount, gold_due_date, diamond_due_date, due_date, amount_paid_gold, amount_paid_diamond, status, created_at, created_by",
+    )
+    .eq("id", id)
+    .single<BillRow>();
+
+  if (error) {
+    if (error.code === "PGRST116") {
+      return null;
+    }
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return {
+    ...data,
+    customerName: data.customer?.name ?? "Unknown customer",
+    daysOverdue: billDaysOverdue(data),
+    outstandingDiamondAmount: billOutstandingDiamondAmount(data),
+    outstandingGoldAmount: billOutstandingGoldAmount(data),
+    outstandingTotalAmount: billOutstandingTotalAmount(data),
+    totalAmount: billTotalAmount(data),
+  };
+}
+
 export async function listBills(filters: ListBillsFilters = {}): Promise<BillListItem[]> {
   const supabase = await createSupabaseServerClient();
   let query = supabase
