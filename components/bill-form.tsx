@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useTransition } from "react";
 
-import { createBillAction } from "@/app/(app)/bills/actions";
+import { createBillAction, updateBillAction } from "@/app/(app)/bills/actions";
 import { CustomerPicker } from "@/components/customer-picker";
 import { useToast } from "@/components/toast-provider";
 
@@ -14,15 +14,29 @@ type CustomerOption = {
 };
 
 type BillFormProps = {
+  billId?: string;
   customers: CustomerOption[];
   defaultBillDate: string;
   defaultCustomerId?: string;
+  initialValues?: {
+    billDate: string;
+    billNumber: string;
+    customerId: string;
+    diamondAmount: number;
+    goldAmount: number;
+  };
+  submitLabel?: string;
+  title?: string;
 };
 
 export function BillForm({
+  billId,
   customers,
   defaultBillDate,
   defaultCustomerId,
+  initialValues,
+  submitLabel,
+  title,
 }: BillFormProps) {
   const router = useRouter();
   const { showError, showSuccess } = useToast();
@@ -41,7 +55,9 @@ export function BillForm({
 
     startTransition(async () => {
       try {
-        const result = await createBillAction(formData);
+        const result = billId
+          ? await updateBillAction(billId, formData)
+          : await createBillAction(formData);
 
         if (!result.ok) {
           showError(result.message);
@@ -66,7 +82,7 @@ export function BillForm({
         <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">
           Bills
         </p>
-        <h2 className="text-3xl font-semibold tracking-tight text-stone-950">Add bill</h2>
+        <h2 className="text-3xl font-semibold tracking-tight text-stone-950">{title ?? "Add bill"}</h2>
         <p className="max-w-2xl text-sm leading-7 text-stone-600">
           Gold and diamond due dates are computed on the server from the selected customer’s credit terms.
         </p>
@@ -75,12 +91,13 @@ export function BillForm({
       <form onSubmit={handleSubmit} className="grid gap-5 rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
         <label className="block space-y-2 text-sm font-medium text-stone-700">
           <span>Customer</span>
-          <CustomerPicker customers={customers} defaultCustomerId={defaultCustomerId} />
+          <CustomerPicker customers={customers} defaultCustomerId={initialValues?.customerId ?? defaultCustomerId} />
         </label>
 
         <label className="block space-y-2 text-sm font-medium text-stone-700">
           <span>Bill number</span>
           <input
+            defaultValue={initialValues?.billNumber}
             required
             name="bill_number"
             type="text"
@@ -96,7 +113,7 @@ export function BillForm({
               required
               name="bill_date"
               type="date"
-              defaultValue={defaultBillDate}
+              defaultValue={initialValues?.billDate ?? defaultBillDate}
               className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-600"
             />
           </label>
@@ -108,7 +125,7 @@ export function BillForm({
               step="0.01"
               name="gold_amount"
               type="number"
-              defaultValue="0"
+              defaultValue={initialValues?.goldAmount ?? 0}
               className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-600"
               placeholder="0.00"
             />
@@ -121,7 +138,7 @@ export function BillForm({
               step="0.01"
               name="diamond_amount"
               type="number"
-              defaultValue="0"
+              defaultValue={initialValues?.diamondAmount ?? 0}
               className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-600"
               placeholder="0.00"
             />
@@ -134,7 +151,7 @@ export function BillForm({
             disabled={isPending}
             className="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800"
           >
-            {isPending ? "Creating..." : "Create bill"}
+            {isPending ? "Saving..." : (submitLabel ?? "Create bill")}
           </button>
         </div>
       </form>
