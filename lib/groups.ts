@@ -26,12 +26,10 @@ function readGroupInput(formData: FormData) {
 
 export async function createGroupAction(formData: FormData): Promise<ActionResult> {
   try {
-    const user = await requireTeamMember();
-    console.log("User authenticated:", user.id);
-    
+    await requireTeamMember();
+
     const payload = readGroupInput(formData);
-    console.log("Group payload:", payload);
-    
+
     const supabase = await createSupabaseServerClient();
 
     const { data, error } = await supabase
@@ -49,7 +47,6 @@ export async function createGroupAction(formData: FormData): Promise<ActionResul
       throw error;
     }
 
-    console.log("Group created:", data);
     revalidatePath("/customers");
     revalidatePath("/customers/new");
 

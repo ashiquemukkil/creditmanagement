@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 
 import { getCurrentUserRole, listInvitations, listUsers } from "@/lib/auth";
 
-import { createInvitationAction, updateUserRoleAction } from "./actions";
+import { updateUserRoleAction } from "./actions";
+import { InvitationForm } from "./invitation-form";
 
 const roles = ["admin", "collaborator", "viewer"] as const;
 
@@ -35,38 +36,7 @@ export default async function ManageUsersPage() {
         <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
           Create an email invitation and the app will send a signup link for that role.
         </p>
-        <form action={createInvitationAction} className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-end">
-          <label className="block flex-1 space-y-2 text-sm font-medium text-stone-700">
-            <span>Email</span>
-            <input
-              required
-              name="email"
-              type="email"
-              className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-600"
-              placeholder="staff@business.com"
-            />
-          </label>
-          <label className="block space-y-2 text-sm font-medium text-stone-700">
-            <span>Role</span>
-            <select
-              name="role"
-              defaultValue="collaborator"
-              className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-950"
-            >
-              {roles.map((availableRole) => (
-                <option key={availableRole} value={availableRole}>
-                  {availableRole}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="submit"
-            className="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800"
-          >
-            Send invitation
-          </button>
-        </form>
+        <InvitationForm />
       </div>
 
       <div className="overflow-x-auto rounded-3xl border border-stone-200">

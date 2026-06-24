@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentUserRole, type AppRole } from "@/lib/auth";
 import { sendInvitationEmail } from "@/lib/invitation-email";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { InvitationActionState } from "./invitation-state";
 
 const allowedRoles: AppRole[] = ["admin", "collaborator", "viewer"];
 
@@ -21,6 +22,10 @@ function isMissingRelationError(error: unknown, relationName: string) {
 }
 
 export async function createInvitationAction(formData: FormData) {
+  await createInvitation(formData);
+}
+
+async function createInvitation(formData: FormData) {
   const requesterRole = await getCurrentUserRole();
 
   if (requesterRole !== "admin") {
@@ -87,9 +92,16 @@ export async function createInvitationAction(formData: FormData) {
     }
   }
 
+  let deliveryErrorMessage: string | null = null;
+
   try {
     await sendInvitationEmail(email, role);
   } catch (error) {
+    deliveryErrorMessage =
+      error instanceof Error
+        ? error.message
+        : "Unknown email delivery error. Check server logs.";
+
     if (error instanceof Error) {
       console.error(`Invitation saved but email delivery failed for ${email}: ${error.message}`);
     } else {
@@ -98,6 +110,39 @@ export async function createInvitationAction(formData: FormData) {
   }
 
   revalidatePath("/manage-users");
+
+  return {
+    deliveryErrorMessage,
+    email,
+    role,
+  };
+}
+
+export async function createInvitationActionWithState(
+  _previousState: InvitationActionState,
+  formData: FormData,
+): Promise<InvitationActionState> {
+  try {
+    const result = await createInvitation(formData);
+
+    if (result.deliveryErrorMessage) {
+      return {
+        message: `Invitation for ${result.email} was saved, but delivery failed: ${result.deliveryErrorMessage}`,
+        tone: "warning",
+      };
+    }
+
+    return {
+      message: `Invitation email sent to ${result.email}.`,
+      tone: "success",
+    };
+  } catch (error) {
+    return {
+      message:
+        error instanceof Error ? error.message : "Unable to create invitation. Please try again.",
+      tone: "error",
+    };
+  }
 }
 
 export async function updateUserRoleAction(formData: FormData) {

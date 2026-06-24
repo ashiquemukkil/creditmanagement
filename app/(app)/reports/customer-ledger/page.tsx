@@ -48,7 +48,7 @@ export default async function CustomerLedgerPage({ searchParams }: CustomerLedge
         ) : null}
       </div>
 
-      <form className="grid gap-4 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm md:grid-cols-[1fr_auto]">
+      <form className="grid gap-4 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm md:grid-cols-[1fr_1fr_auto]">
         <label className="space-y-2 text-sm font-medium text-stone-700">
           <span>Customer</span>
           <select
@@ -60,6 +60,21 @@ export default async function CustomerLedgerPage({ searchParams }: CustomerLedge
             {customers.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-2 text-sm font-medium text-stone-700">
+          <span>Group</span>
+          <select
+            name="group"
+            defaultValue={group ?? ""}
+            className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-950"
+          >
+            <option value="">All groups</option>
+            {groups.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.category} - {option.sub_category}
               </option>
             ))}
           </select>
