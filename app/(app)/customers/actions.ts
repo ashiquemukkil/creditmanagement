@@ -12,6 +12,7 @@ function readCustomerInput(formData: FormData) {
   const address = String(formData.get("address") || "").trim();
   const goldCreditDays = Number(formData.get("gold_credit_days") || 0);
   const diamondCreditDays = Number(formData.get("diamond_credit_days") || 0);
+  const groupId = String(formData.get("group_id") || "").trim();
 
   if (!name) {
     throw new Error("Customer name is required.");
@@ -32,6 +33,7 @@ function readCustomerInput(formData: FormData) {
     gold_credit_days: goldCreditDays,
     name,
     phone: phone || null,
+    group_id: groupId || null,
   };
 }
 

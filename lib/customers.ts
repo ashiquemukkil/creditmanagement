@@ -13,10 +13,18 @@ export type CustomerRecord = {
   id: string;
   name: string;
   phone: string | null;
+  group_id: string | null;
+  groups?: { category: string; sub_category: string } | null;
 };
 
 export type CustomerListItem = CustomerRecord & {
   totalOutstanding: number;
+};
+
+type GroupRelation = { category: string; sub_category: string };
+
+type SupabaseCustomerRow = Omit<CustomerRecord, "groups"> & {
+  groups?: GroupRelation | GroupRelation[] | null;
 };
 
 type BillOutstandingRow = {
@@ -27,16 +35,37 @@ type BillOutstandingRow = {
   gold_amount: number;
 };
 
-export async function listCustomers(): Promise<CustomerListItem[]> {
+type ListCustomersFilters = {
+  groupId?: string;
+};
+
+function normalizeCustomerRow(customer: SupabaseCustomerRow): CustomerRecord {
+  const groupValue = Array.isArray(customer.groups)
+    ? (customer.groups[0] ?? null)
+    : (customer.groups ?? null);
+
+  return {
+    ...customer,
+    groups: groupValue,
+  };
+}
+
+export async function listCustomers(filters: ListCustomersFilters = {}): Promise<CustomerListItem[]> {
   const supabase = await createSupabaseServerClient();
+  let customersQuery = supabase
+    .from("customers")
+    .select(
+      "id, name, phone, address, gold_credit_days, diamond_credit_days, advance_amount, created_at, created_by, group_id, groups(category, sub_category)",
+    )
+    .order("created_at", { ascending: false });
+
+  if (filters.groupId) {
+    customersQuery = customersQuery.eq("group_id", filters.groupId);
+  }
+
   const [{ data: customers, error: customersError }, { data: bills, error: billsError }] =
     await Promise.all([
-      supabase
-        .from("customers")
-        .select(
-          "id, name, phone, address, gold_credit_days, diamond_credit_days, advance_amount, created_at, created_by",
-        )
-        .order("created_at", { ascending: false }),
+      customersQuery,
       supabase
         .from("bills")
         .select("customer_id, gold_amount, diamond_amount, amount_paid_gold, amount_paid_diamond")
@@ -61,10 +90,14 @@ export async function listCustomers(): Promise<CustomerListItem[]> {
     );
   });
 
-  return ((customers ?? []) as CustomerRecord[]).map((customer) => ({
-    ...customer,
-    totalOutstanding: totalsByCustomer.get(customer.id) ?? 0,
-  }));
+  return ((customers ?? []) as SupabaseCustomerRow[]).map((customer) => {
+    const normalized = normalizeCustomerRow(customer);
+
+    return {
+      ...normalized,
+      totalOutstanding: totalsByCustomer.get(normalized.id) ?? 0,
+    };
+  });
 }
 
 export async function listCustomerOptions(): Promise<Array<{ id: string; name: string; phone: string | null }>> {
@@ -86,7 +119,7 @@ export async function getCustomerById(customerId: string): Promise<CustomerListI
   const { data: customer, error: customerError } = await supabase
     .from("customers")
     .select(
-      "id, name, phone, address, gold_credit_days, diamond_credit_days, advance_amount, created_at, created_by",
+      "id, name, phone, address, gold_credit_days, diamond_credit_days, advance_amount, created_at, created_by, group_id, groups(category, sub_category)",
     )
     .eq("id", customerId)
     .maybeSingle();
@@ -120,7 +153,7 @@ export async function getCustomerById(customerId: string): Promise<CustomerListI
   );
 
   return {
-    ...(customer as CustomerRecord),
+    ...normalizeCustomerRow(customer as SupabaseCustomerRow),
     totalOutstanding,
   };
 }

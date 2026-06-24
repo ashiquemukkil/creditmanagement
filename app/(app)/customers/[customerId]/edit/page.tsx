@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { CustomerForm } from "@/components/customer-form";
 import { canManageData, getCurrentUserRole } from "@/lib/auth";
 import { getCustomerById } from "@/lib/customers";
+import { listGroups } from "@/lib/groups";
 
 type EditCustomerPageProps = {
   params: Promise<{
@@ -11,7 +12,11 @@ type EditCustomerPageProps = {
 };
 
 export default async function EditCustomerPage({ params }: EditCustomerPageProps) {
-  const [{ customerId }, role] = await Promise.all([params, getCurrentUserRole()]);
+  const [{ customerId }, role, groups] = await Promise.all([
+    params,
+    getCurrentUserRole(),
+    listGroups(),
+  ]);
 
   if (!canManageData(role)) {
     redirect("/customers");
@@ -26,6 +31,7 @@ export default async function EditCustomerPage({ params }: EditCustomerPageProps
   return (
     <CustomerForm
       customerId={customerId}
+      groups={groups}
       initialValues={customer}
       submitLabel="Save changes"
       title="Edit customer"

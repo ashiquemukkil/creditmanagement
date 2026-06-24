@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { listCustomerOptions } from "@/lib/customers";
+import { listGroups } from "@/lib/groups";
 import { getCustomerLedger } from "@/lib/reports";
 
 function formatCurrency(amount: number) {
@@ -15,12 +16,17 @@ function formatCurrency(amount: number) {
 type CustomerLedgerPageProps = {
   searchParams: Promise<{
     customer?: string;
+    group?: string;
   }>;
 };
 
 export default async function CustomerLedgerPage({ searchParams }: CustomerLedgerPageProps) {
-  const [{ customer }, customers] = await Promise.all([searchParams, listCustomerOptions()]);
-  const ledger = customer ? await getCustomerLedger(customer) : null;
+  const [{ customer, group }, customers, groups] = await Promise.all([
+    searchParams,
+    listCustomerOptions(),
+    listGroups(),
+  ]);
+  const ledger = customer ? await getCustomerLedger(customer, group) : null;
 
   return (
     <section className="space-y-6">
@@ -34,7 +40,7 @@ export default async function CustomerLedgerPage({ searchParams }: CustomerLedge
         </div>
         {customer ? (
           <Link
-            href={`/reports/customer-ledger/export?customer=${customer}`}
+            href={`/reports/customer-ledger/export?customer=${customer}${group ? `&group=${group}` : ""}`}
             className="inline-flex rounded-2xl border border-stone-300 px-5 py-3 text-sm font-medium text-stone-950 transition hover:bg-stone-50"
           >
             Export CSV

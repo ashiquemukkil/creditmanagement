@@ -3,6 +3,7 @@ export type ActionResult =
       message: string;
       ok: true;
       redirectTo?: string;
+      data?: Record<string, unknown>;
     }
   | {
       message: string;

@@ -41,30 +41,62 @@ export type PaymentListItem = PaymentRecord & {
   unallocatedAmount: number;
 };
 
+type CustomerRelation = { name: string } | Array<{ name: string }> | null;
+
 type PaymentRow = PaymentRecord & {
   payment_allocations: PaymentAllocationRecord[] | null;
-  customers: Array<{
-    name: string;
-  }> | null;
+  customer: CustomerRelation;
 };
 
 type ListPaymentsFilters = {
   customerId?: string;
+  groupId?: string;
   paymentId?: string;
 };
+
+function readCustomerName(customer: CustomerRelation) {
+  if (Array.isArray(customer)) {
+    return customer[0]?.name ?? "Unknown customer";
+  }
+
+  return customer?.name ?? "Unknown customer";
+}
 
 export async function listPayments(filters: ListPaymentsFilters = {}): Promise<PaymentListItem[]> {
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from("payments")
     .select(
-      "id, customer_id, payment_date, amount, notes, created_at, created_by, customers(name), payment_allocations(id, bill_id, allocated_to, amount_allocated, created_at, bills(bill_number))",
+      "id, customer_id, payment_date, amount, notes, created_at, created_by, customer:customer_id(name), payment_allocations(id, bill_id, allocated_to, amount_allocated, created_at, bills(bill_number))",
     )
     .order("payment_date", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (filters.customerId) {
     query = query.eq("customer_id", filters.customerId);
+  }
+
+  if (filters.groupId) {
+    const { data: customers, error: customersError } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("group_id", filters.groupId);
+
+    if (customersError) {
+      throw customersError;
+    }
+
+    const customerIds = (customers ?? []).map((customer) => customer.id);
+
+    if (customerIds.length === 0) {
+      return [];
+    }
+
+    if (filters.customerId && !customerIds.includes(filters.customerId)) {
+      return [];
+    }
+
+    query = query.in("customer_id", customerIds);
   }
 
   if (filters.paymentId) {
@@ -106,7 +138,7 @@ export async function listPayments(filters: ListPaymentsFilters = {}): Promise<P
             ? "advance balance"
             : "fully allocated",
       allocations,
-      customerName: payment.customers?.[0]?.name ?? "Unknown customer",
+      customerName: readCustomerName(payment.customer),
       unallocatedAmount,
     };
   });
@@ -123,7 +155,7 @@ export async function listPaymentOptions(): Promise<
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("payments")
-    .select("id, amount, payment_date, customers(name)")
+    .select("id, amount, payment_date, customer:customer_id(name)")
     .order("payment_date", { ascending: false })
     .order("created_at", { ascending: false });
 
@@ -133,12 +165,12 @@ export async function listPaymentOptions(): Promise<
 
   return ((data ?? []) as Array<{
     amount: number;
-    customers: Array<{ name: string }> | null;
+    customer: CustomerRelation;
     id: string;
     payment_date: string;
   }>).map((payment) => ({
     amount: Number(payment.amount),
-    customerName: payment.customers?.[0]?.name ?? "Unknown customer",
+    customerName: readCustomerName(payment.customer),
     id: payment.id,
     paymentDate: payment.payment_date,
   }));

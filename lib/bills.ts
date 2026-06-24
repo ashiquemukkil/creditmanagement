@@ -47,6 +47,7 @@ type BillRow = BillRecord & {
 
 type ListBillsFilters = {
   customerId?: string;
+  groupId?: string;
   metal?: BillMetal;
   status?: BillStatus;
 };
@@ -223,6 +224,7 @@ export async function getBillById(id: string): Promise<BillListItem | null> {
 
 export async function listBills(filters: ListBillsFilters = {}): Promise<BillListItem[]> {
   const supabase = await createSupabaseServerClient();
+
   let query = supabase
     .from("bills")
     .select(
@@ -233,6 +235,25 @@ export async function listBills(filters: ListBillsFilters = {}): Promise<BillLis
 
   if (filters.customerId) {
     query = query.eq("customer_id", filters.customerId);
+  }
+
+  if (filters.groupId) {
+    const { data: customers, error: customersError } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("group_id", filters.groupId);
+
+    if (customersError) {
+      throw customersError;
+    }
+
+    const customerIds = (customers ?? []).map((customer) => customer.id);
+
+    if (customerIds.length === 0) {
+      return [];
+    }
+
+    query = query.in("customer_id", customerIds);
   }
 
   if (filters.metal) {

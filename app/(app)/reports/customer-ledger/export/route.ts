@@ -7,12 +7,13 @@ export async function GET(request: NextRequest) {
   await requireAuthenticatedUser();
 
   const customerId = request.nextUrl.searchParams.get("customer");
+  const groupId = request.nextUrl.searchParams.get("group") ?? undefined;
 
   if (!customerId) {
     return new NextResponse("Missing customer query parameter.", { status: 400 });
   }
 
-  const ledger = await getCustomerLedger(customerId);
+  const ledger = await getCustomerLedger(customerId, groupId);
 
   if (!ledger) {
     return new NextResponse("Customer not found.", { status: 404 });

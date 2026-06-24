@@ -5,6 +5,7 @@ import { DeleteCustomerButton } from "@/components/delete-customer-button";
 import { canManageData, getCurrentUserRole } from "@/lib/auth";
 import { billDueDateEntries, listBills } from "@/lib/bills";
 import { getCustomerById } from "@/lib/customers";
+import { getGroupById } from "@/lib/groups";
 import { listPayments } from "@/lib/payments";
 
 function formatCurrency(amount: number) {
@@ -42,6 +43,11 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
 
   if (!customer) {
     notFound();
+  }
+
+  let group = null;
+  if (customer.group_id) {
+    group = await getGroupById(customer.group_id);
   }
 
   const canEdit = canManageData(role);
@@ -93,6 +99,12 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
             <div>
               <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Phone</dt>
               <dd className="mt-2 break-all text-sm text-stone-800">{customer.phone || "-"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Group</dt>
+              <dd className="mt-2 text-sm text-stone-800">
+                {group ? `${group.category} - ${group.sub_category}` : "-"}
+              </dd>
             </div>
             <div>
               <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Outstanding</dt>

@@ -4,6 +4,7 @@ import { DeleteBillButton } from "@/components/delete-bill-button";
 import { canManageData, getCurrentUserRole } from "@/lib/auth";
 import { billDueDateEntries, type BillMetal, type BillStatus, listBills } from "@/lib/bills";
 import { listCustomerOptions } from "@/lib/customers";
+import { listGroups } from "@/lib/groups";
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -49,20 +50,22 @@ function statusBadgeClass(status: BillStatus) {
 type BillsPageProps = {
   searchParams: Promise<{
     customer?: string;
+    group?: string;
     metal?: BillMetal;
     status?: BillStatus;
   }>;
 };
 
 export default async function BillsPage({ searchParams }: BillsPageProps) {
-  const [{ customer, metal, status }, role, customerOptions] = await Promise.all([
+  const [{ customer, group, metal, status }, role, customerOptions, groups] = await Promise.all([
     searchParams,
     getCurrentUserRole(),
     listCustomerOptions(),
+    listGroups(),
   ]);
 
   const [bills] = await Promise.all([
-    listBills({ customerId: customer, metal, status }),
+    listBills({ customerId: customer, groupId: group, metal, status }),
   ]);
   const canCreate = canManageData(role);
 
@@ -103,6 +106,22 @@ export default async function BillsPage({ searchParams }: BillsPageProps) {
             {customerOptions.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="space-y-2 text-sm font-medium text-stone-700">
+          <span>Group</span>
+          <select
+            name="group"
+            defaultValue={group ?? ""}
+            className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-950"
+          >
+            <option value="">All groups</option>
+            {groups.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.category} - {entry.sub_category}
               </option>
             ))}
           </select>

@@ -54,6 +54,20 @@ model User {
   auditLogs    AuditLog[]
 }
 
+model Group {
+  id            String    @id @default(uuid()) @db.Uuid
+  category      String
+  subCategory   String
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  customers     Customer[]
+
+  @@unique([category, subCategory])
+  @@index([category])
+}
+
 model Customer {
   id                String    @id @default(uuid()) @db.Uuid
   name              String
@@ -64,15 +78,18 @@ model Customer {
   advanceAmount     Decimal   @default(0) @db.Decimal(12, 2)
   creditBalance     Decimal   @default(0) @db.Decimal(12, 2)
   notes             String?
+  groupId           String?   @db.Uuid
   isActive          Boolean   @default(true)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  group             Group?    @relation(fields: [groupId], references: [id])
   bills             Bill[]
   payments          Payment[]
 
   @@index([name])
   @@index([phone])
+  @@index([groupId])
 }
 
 model Bill {

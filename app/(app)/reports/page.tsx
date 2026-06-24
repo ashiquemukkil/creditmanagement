@@ -6,11 +6,11 @@ const reports = [
     href: "/reports/outstanding-statement",
     title: "Outstanding statement",
   },
-  {
-    description: "All-customer aging buckets split by gold and diamond exposure.",
-    href: "/reports/aging-report",
-    title: "Aging report",
-  },
+  // {
+  //   description: "All-customer aging buckets split by gold and diamond exposure.",
+  //   href: "/reports/aging-report",
+  //   title: "Aging report",
+  // },
   {
     description: "Chronological customer ledger mixing bill debits and payment credits.",
     href: "/reports/customer-ledger",

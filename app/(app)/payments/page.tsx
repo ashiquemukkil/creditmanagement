@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { canManageData, getCurrentUserRole } from "@/lib/auth";
 import { listCustomerOptions } from "@/lib/customers";
+import { listGroups } from "@/lib/groups";
 import { listPayments } from "@/lib/payments";
 
 function formatCurrency(amount: number) {
@@ -24,16 +25,18 @@ function formatDate(dateValue: string) {
 type PaymentsPageProps = {
   searchParams: Promise<{
     customer?: string;
+    group?: string;
   }>;
 };
 
 export default async function PaymentsPage({ searchParams }: PaymentsPageProps) {
-  const [{ customer }, role, customerOptions] = await Promise.all([
+  const [{ customer, group }, role, customerOptions, groups] = await Promise.all([
     searchParams,
     getCurrentUserRole(),
     listCustomerOptions(),
+    listGroups(),
   ]);
-  const payments = await listPayments({ customerId: customer });
+  const payments = await listPayments({ customerId: customer, groupId: group });
   const canCreate = canManageData(role);
 
   function allocationLabel(payment: (typeof payments)[number]) {
@@ -73,7 +76,7 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
         ) : null}
       </div>
 
-      <form className="grid gap-4 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm md:grid-cols-[1fr_auto_auto]">
+      <form className="grid gap-4 rounded-3xl border border-stone-200 bg-white p-5 shadow-sm md:grid-cols-3">
         <label className="space-y-2 text-sm font-medium text-stone-700">
           <span>Customer</span>
           <select
@@ -85,6 +88,22 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
             {customerOptions.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="space-y-2 text-sm font-medium text-stone-700">
+          <span>Group</span>
+          <select
+            name="group"
+            defaultValue={group ?? ""}
+            className="w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-950"
+          >
+            <option value="">All groups</option>
+            {groups.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.category} - {entry.sub_category}
               </option>
             ))}
           </select>
