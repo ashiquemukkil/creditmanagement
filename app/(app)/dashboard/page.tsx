@@ -2,6 +2,18 @@ import Link from "next/link";
 
 import { getDashboardSnapshot } from "@/lib/dashboard";
 
+const OVERDUE_PAGE_SIZE = 5;
+const ACTIVITY_PAGE_SIZE = 10;
+
+function parsePage(value: string | undefined) {
+  if (!value) {
+    return 1;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
     currency: "INR",
@@ -19,8 +31,46 @@ function formatDate(dateValue: string) {
   }).format(new Date(`${dateValue}T00:00:00`));
 }
 
-export default async function DashboardPage() {
-  const snapshot = await getDashboardSnapshot();
+type DashboardPageProps = {
+  searchParams: Promise<{
+    activityPage?: string;
+    overduePage?: string;
+  }>;
+};
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  const { activityPage: activityParam, overduePage: overdueParam } = await searchParams;
+  const snapshot = await getDashboardSnapshot({
+    activityPage: parsePage(activityParam),
+    activityPageSize: ACTIVITY_PAGE_SIZE,
+    overduePage: parsePage(overdueParam),
+    overduePageSize: OVERDUE_PAGE_SIZE,
+  });
+
+  const overdueFrom =
+    snapshot.topOverdueTotalCount === 0
+      ? 0
+      : (snapshot.topOverduePage - 1) * snapshot.topOverduePageSize + 1;
+  const overdueTo =
+    snapshot.topOverdueTotalCount === 0
+      ? 0
+      : overdueFrom + snapshot.topOverdueCustomers.length - 1;
+
+  const activityFrom =
+    snapshot.recentActivityTotalCount === 0
+      ? 0
+      : (snapshot.recentActivityPage - 1) * snapshot.recentActivityPageSize + 1;
+  const activityTo =
+    snapshot.recentActivityTotalCount === 0
+      ? 0
+      : activityFrom + snapshot.recentActivity.length - 1;
+
+  const dashboardHref = (nextActivityPage: number, nextOverduePage: number) => {
+    const params = new URLSearchParams();
+    params.set("activityPage", String(nextActivityPage));
+    params.set("overduePage", String(nextOverduePage));
+    return `/dashboard?${params.toString()}`;
+  };
 
   return (
     <section className="space-y-6">
@@ -45,7 +95,7 @@ export default async function DashboardPage() {
         </div>
         <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Recent activity</p>
-          <p className="mt-4 text-4xl font-semibold text-stone-950">{snapshot.recentActivity.length}</p>
+          <p className="mt-4 text-4xl font-semibold text-stone-950">{snapshot.recentActivityTotalCount}</p>
           <p className="mt-2 text-sm text-stone-600">Latest bill and payment records.</p>
         </div>
       </div>
@@ -85,6 +135,37 @@ export default async function DashboardPage() {
               ))}
             </div>
           )}
+
+          <div className="mt-5 flex flex-col gap-3 border-t border-stone-200 pt-4 text-sm text-stone-600 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              Showing {overdueFrom}-{overdueTo} of {snapshot.topOverdueTotalCount}
+            </p>
+            <div className="flex items-center gap-3">
+              {snapshot.topOverduePage > 1 ? (
+                <Link
+                  href={dashboardHref(snapshot.recentActivityPage, snapshot.topOverduePage - 1)}
+                  className="rounded-xl border border-stone-300 px-4 py-2 font-medium text-stone-700 transition hover:bg-stone-50"
+                >
+                  Previous
+                </Link>
+              ) : (
+                <span className="rounded-xl border border-stone-200 px-4 py-2 text-stone-400">Previous</span>
+              )}
+              <span>
+                Page {snapshot.topOverduePage} of {snapshot.topOverdueTotalPages}
+              </span>
+              {snapshot.topOverduePage < snapshot.topOverdueTotalPages ? (
+                <Link
+                  href={dashboardHref(snapshot.recentActivityPage, snapshot.topOverduePage + 1)}
+                  className="rounded-xl border border-stone-300 px-4 py-2 font-medium text-stone-700 transition hover:bg-stone-50"
+                >
+                  Next
+                </Link>
+              ) : (
+                <span className="rounded-xl border border-stone-200 px-4 py-2 text-stone-400">Next</span>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
@@ -113,6 +194,37 @@ export default async function DashboardPage() {
               ))}
             </div>
           )}
+
+          <div className="mt-5 flex flex-col gap-3 border-t border-stone-200 pt-4 text-sm text-stone-600 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              Showing {activityFrom}-{activityTo} of {snapshot.recentActivityTotalCount}
+            </p>
+            <div className="flex items-center gap-3">
+              {snapshot.recentActivityPage > 1 ? (
+                <Link
+                  href={dashboardHref(snapshot.recentActivityPage - 1, snapshot.topOverduePage)}
+                  className="rounded-xl border border-stone-300 px-4 py-2 font-medium text-stone-700 transition hover:bg-stone-50"
+                >
+                  Previous
+                </Link>
+              ) : (
+                <span className="rounded-xl border border-stone-200 px-4 py-2 text-stone-400">Previous</span>
+              )}
+              <span>
+                Page {snapshot.recentActivityPage} of {snapshot.recentActivityTotalPages}
+              </span>
+              {snapshot.recentActivityPage < snapshot.recentActivityTotalPages ? (
+                <Link
+                  href={dashboardHref(snapshot.recentActivityPage + 1, snapshot.topOverduePage)}
+                  className="rounded-xl border border-stone-300 px-4 py-2 font-medium text-stone-700 transition hover:bg-stone-50"
+                >
+                  Next
+                </Link>
+              ) : (
+                <span className="rounded-xl border border-stone-200 px-4 py-2 text-stone-400">Next</span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </section>

@@ -21,6 +21,14 @@ export type CustomerListItem = CustomerRecord & {
   totalOutstanding: number;
 };
 
+export type PaginatedResult<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+};
+
 type GroupRelation = { category: string; sub_category: string };
 
 type SupabaseCustomerRow = Omit<CustomerRecord, "groups"> & {
@@ -98,6 +106,25 @@ export async function listCustomers(filters: ListCustomersFilters = {}): Promise
       totalOutstanding: totalsByCustomer.get(normalized.id) ?? 0,
     };
   });
+}
+
+export async function listCustomersPaginated(
+  filters: ListCustomersFilters & { page: number; pageSize: number },
+): Promise<PaginatedResult<CustomerListItem>> {
+  const pageSize = Math.max(1, Math.floor(filters.pageSize));
+  const allCustomers = await listCustomers({ groupId: filters.groupId });
+  const totalCount = allCustomers.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(Math.max(1, Math.floor(filters.page)), totalPages);
+  const start = (page - 1) * pageSize;
+
+  return {
+    items: allCustomers.slice(start, start + pageSize),
+    page,
+    pageSize,
+    totalCount,
+    totalPages,
+  };
 }
 
 export async function listCustomerOptions(): Promise<Array<{ id: string; name: string; phone: string | null }>> {

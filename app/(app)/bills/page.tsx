@@ -2,9 +2,20 @@ import Link from "next/link";
 
 import { DeleteBillButton } from "@/components/delete-bill-button";
 import { canManageData, getCurrentUserRole } from "@/lib/auth";
-import { billDueDateEntries, type BillMetal, type BillStatus, listBills } from "@/lib/bills";
+import { billDueDateEntries, type BillMetal, type BillStatus, listBillsPaginated } from "@/lib/bills";
 import { listCustomerOptions } from "@/lib/customers";
 import { listGroups } from "@/lib/groups";
+
+const PAGE_SIZE = 12;
+
+function parsePage(value: string | undefined) {
+  if (!value) {
+    return 1;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -52,22 +63,56 @@ type BillsPageProps = {
     customer?: string;
     group?: string;
     metal?: BillMetal;
+    page?: string;
     status?: BillStatus;
   }>;
 };
 
 export default async function BillsPage({ searchParams }: BillsPageProps) {
-  const [{ customer, group, metal, status }, role, customerOptions, groups] = await Promise.all([
+  const [{ customer, group, metal, page: pageParam, status }, role, customerOptions, groups] = await Promise.all([
     searchParams,
     getCurrentUserRole(),
     listCustomerOptions(),
     listGroups(),
   ]);
+  const requestedPage = parsePage(pageParam);
 
-  const [bills] = await Promise.all([
-    listBills({ customerId: customer, groupId: group, metal, status }),
-  ]);
+  const billResult = await listBillsPaginated({
+    customerId: customer,
+    groupId: group,
+    metal,
+    page: requestedPage,
+    pageSize: PAGE_SIZE,
+    status,
+  });
+  const { items: bills, page, totalCount, totalPages } = billResult;
+  const from = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const to = totalCount === 0 ? 0 : from + bills.length - 1;
   const canCreate = canManageData(role);
+
+  const pageHref = (nextPage: number) => {
+    const params = new URLSearchParams();
+
+    if (customer) {
+      params.set("customer", customer);
+    }
+
+    if (group) {
+      params.set("group", group);
+    }
+
+    if (metal) {
+      params.set("metal", metal);
+    }
+
+    if (status) {
+      params.set("status", status);
+    }
+
+    params.set("page", String(nextPage));
+
+    return `/bills?${params.toString()}`;
+  };
 
   return (
     <section className="space-y-6">
@@ -205,6 +250,37 @@ export default async function BillsPage({ searchParams }: BillsPageProps) {
             )}
           </tbody>
         </table>
+
+        <div className="flex flex-col gap-3 border-t border-stone-200 px-5 py-4 text-sm text-stone-600 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Showing {from}-{to} of {totalCount}
+          </p>
+          <div className="flex items-center gap-3">
+            {page > 1 ? (
+              <Link
+                href={pageHref(page - 1)}
+                className="rounded-xl border border-stone-300 px-4 py-2 font-medium text-stone-700 transition hover:bg-stone-50"
+              >
+                Previous
+              </Link>
+            ) : (
+              <span className="rounded-xl border border-stone-200 px-4 py-2 text-stone-400">Previous</span>
+            )}
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            {page < totalPages ? (
+              <Link
+                href={pageHref(page + 1)}
+                className="rounded-xl border border-stone-300 px-4 py-2 font-medium text-stone-700 transition hover:bg-stone-50"
+              >
+                Next
+              </Link>
+            ) : (
+              <span className="rounded-xl border border-stone-200 px-4 py-2 text-stone-400">Next</span>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );

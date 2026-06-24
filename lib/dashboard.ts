@@ -30,7 +30,16 @@ type RecentPaymentRow = {
   payment_date: string;
 };
 
-export async function getDashboardSnapshot() {
+type DashboardSnapshotOptions = {
+  activityPage?: number;
+  activityPageSize?: number;
+  overduePage?: number;
+  overduePageSize?: number;
+};
+
+export async function getDashboardSnapshot(options: DashboardSnapshotOptions = {}) {
+  const activityPageSize = Math.max(1, Math.floor(options.activityPageSize ?? 10));
+  const overduePageSize = Math.max(1, Math.floor(options.overduePageSize ?? 5));
   const supabase = await createSupabaseServerClient();
   const [{ data: bills, error: billsError }, { data: payments, error: paymentsError }] =
     await Promise.all([
@@ -46,7 +55,6 @@ export async function getDashboardSnapshot() {
         .from("payments")
         .select("id, customer_id, customer:customer_id(name), payment_date, amount, notes, created_at")
         .order("created_at", { ascending: false })
-        .limit(10)
         .overrideTypes<RecentPaymentRow[]>(),
     ]);
 
@@ -74,7 +82,7 @@ export async function getDashboardSnapshot() {
     }
   >();
 
-  const recentBills = outstandingBills.slice(0, 10).map((bill) => ({
+  const recentBills = outstandingBills.map((bill) => ({
     amount: billTotalAmount(bill),
     createdAt: bill.created_at,
     customerId: bill.customer_id,
@@ -124,18 +132,38 @@ export async function getDashboardSnapshot() {
     id: payment.id,
     type: "payment" as const,
   }))]
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    .slice(0, 10);
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+  const topOverdueCustomers = Array.from(topOverdueMap.values()).sort(
+    (left, right) =>
+      right.maxDaysOverdue - left.maxDaysOverdue || right.totalOutstanding - left.totalOutstanding,
+  );
+
+  const overdueTotalCount = topOverdueCustomers.length;
+  const overdueTotalPages = Math.max(1, Math.ceil(overdueTotalCount / overduePageSize));
+  const overduePage = Math.min(Math.max(1, Math.floor(options.overduePage ?? 1)), overdueTotalPages);
+  const overdueOffset = (overduePage - 1) * overduePageSize;
+
+  const recentActivityTotalCount = activity.length;
+  const recentActivityTotalPages = Math.max(1, Math.ceil(recentActivityTotalCount / activityPageSize));
+  const recentActivityPage = Math.min(
+    Math.max(1, Math.floor(options.activityPage ?? 1)),
+    recentActivityTotalPages,
+  );
+  const recentActivityOffset = (recentActivityPage - 1) * activityPageSize;
 
   return {
     overdueBillCount,
-    recentActivity: activity,
-    topOverdueCustomers: Array.from(topOverdueMap.values())
-      .sort(
-        (left, right) =>
-          right.maxDaysOverdue - left.maxDaysOverdue || right.totalOutstanding - left.totalOutstanding,
-      )
-      .slice(0, 5),
+    recentActivity: activity.slice(recentActivityOffset, recentActivityOffset + activityPageSize),
+    recentActivityPage,
+    recentActivityPageSize: activityPageSize,
+    recentActivityTotalCount,
+    recentActivityTotalPages,
+    topOverdueCustomers: topOverdueCustomers.slice(overdueOffset, overdueOffset + overduePageSize),
+    topOverduePage: overduePage,
+    topOverduePageSize: overduePageSize,
+    topOverdueTotalCount: overdueTotalCount,
+    topOverdueTotalPages: overdueTotalPages,
     totalOutstanding,
   };
 }

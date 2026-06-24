@@ -3,7 +3,18 @@ import Link from "next/link";
 import { canManageData, getCurrentUserRole } from "@/lib/auth";
 import { listCustomerOptions } from "@/lib/customers";
 import { listGroups } from "@/lib/groups";
-import { listPayments } from "@/lib/payments";
+import { listPaymentsPaginated } from "@/lib/payments";
+
+const PAGE_SIZE = 12;
+
+function parsePage(value: string | undefined) {
+  if (!value) {
+    return 1;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -26,18 +37,44 @@ type PaymentsPageProps = {
   searchParams: Promise<{
     customer?: string;
     group?: string;
+    page?: string;
   }>;
 };
 
 export default async function PaymentsPage({ searchParams }: PaymentsPageProps) {
-  const [{ customer, group }, role, customerOptions, groups] = await Promise.all([
+  const [{ customer, group, page: pageParam }, role, customerOptions, groups] = await Promise.all([
     searchParams,
     getCurrentUserRole(),
     listCustomerOptions(),
     listGroups(),
   ]);
-  const payments = await listPayments({ customerId: customer, groupId: group });
+  const requestedPage = parsePage(pageParam);
+  const paymentResult = await listPaymentsPaginated({
+    customerId: customer,
+    groupId: group,
+    page: requestedPage,
+    pageSize: PAGE_SIZE,
+  });
+  const { items: payments, page, totalCount, totalPages } = paymentResult;
+  const from = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const to = totalCount === 0 ? 0 : from + payments.length - 1;
   const canCreate = canManageData(role);
+
+  const pageHref = (nextPage: number) => {
+    const params = new URLSearchParams();
+
+    if (customer) {
+      params.set("customer", customer);
+    }
+
+    if (group) {
+      params.set("group", group);
+    }
+
+    params.set("page", String(nextPage));
+
+    return `/payments?${params.toString()}`;
+  };
 
   function allocationLabel(payment: (typeof payments)[number]) {
     if (payment.unallocatedAmount > 0 && payment.allocatedAmount > 0) {
@@ -182,6 +219,37 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
             )}
           </tbody>
         </table>
+
+        <div className="flex flex-col gap-3 border-t border-stone-200 px-5 py-4 text-sm text-stone-600 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Showing {from}-{to} of {totalCount}
+          </p>
+          <div className="flex items-center gap-3">
+            {page > 1 ? (
+              <Link
+                href={pageHref(page - 1)}
+                className="rounded-xl border border-stone-300 px-4 py-2 font-medium text-stone-700 transition hover:bg-stone-50"
+              >
+                Previous
+              </Link>
+            ) : (
+              <span className="rounded-xl border border-stone-200 px-4 py-2 text-stone-400">Previous</span>
+            )}
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            {page < totalPages ? (
+              <Link
+                href={pageHref(page + 1)}
+                className="rounded-xl border border-stone-300 px-4 py-2 font-medium text-stone-700 transition hover:bg-stone-50"
+              >
+                Next
+              </Link>
+            ) : (
+              <span className="rounded-xl border border-stone-200 px-4 py-2 text-stone-400">Next</span>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );

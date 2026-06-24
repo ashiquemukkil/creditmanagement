@@ -14,7 +14,6 @@ function isMissingAuthSession(error: unknown) {
 export async function proxy(request: NextRequest) {
   const { response, supabase } = updateSession(request);
   let user = null;
-  let isActive = false;
   let hasAuthRefreshRace = false;
 
   try {
@@ -51,20 +50,6 @@ export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const isPublicRoute = publicRoutes.has(pathname);
 
-  if (user) {
-    const { data, error } = await supabase
-      .from("users")
-      .select("is_active")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (error) {
-      throw error;
-    }
-
-    isActive = data?.is_active ?? false;
-  }
-
   if (!user && !isPublicRoute) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
@@ -75,6 +60,22 @@ export async function proxy(request: NextRequest) {
 
     return NextResponse.redirect(loginUrl);
   }
+
+  if (!user) {
+    return response;
+  }
+
+  const { data, error } = await supabase
+    .from("users")
+    .select("is_active")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const isActive = data?.is_active ?? false;
 
   if (user && !isActive) {
     await supabase.auth.signOut();
@@ -107,5 +108,16 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: [
+    "/",
+    "/login",
+    "/signup",
+    "/dashboard/:path*",
+    "/customers/:path*",
+    "/bills/:path*",
+    "/payments/:path*",
+    "/reports/:path*",
+    "/bulk-upload/:path*",
+    "/manage-users/:path*",
+  ],
 };

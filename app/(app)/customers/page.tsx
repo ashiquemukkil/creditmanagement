@@ -2,8 +2,19 @@ import Link from "next/link";
 
 import { DeleteCustomerButton } from "@/components/delete-customer-button";
 import { canManageData, getCurrentUserRole } from "@/lib/auth";
-import { listCustomers } from "@/lib/customers";
+import { listCustomersPaginated } from "@/lib/customers";
 import { listGroups } from "@/lib/groups";
+
+const PAGE_SIZE = 12;
+
+function parsePage(value: string | undefined) {
+  if (!value) {
+    return 1;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -17,17 +28,34 @@ function formatCurrency(amount: number) {
 type CustomersPageProps = {
   searchParams: Promise<{
     group?: string;
+    page?: string;
   }>;
 };
 
 export default async function CustomersPage({ searchParams }: CustomersPageProps) {
-  const { group } = await searchParams;
-  const [customers, groups, role] = await Promise.all([
-    listCustomers({ groupId: group }),
+  const { group, page: pageParam } = await searchParams;
+  const requestedPage = parsePage(pageParam);
+  const [customerResult, groups, role] = await Promise.all([
+    listCustomersPaginated({ groupId: group, page: requestedPage, pageSize: PAGE_SIZE }),
     listGroups(),
     getCurrentUserRole(),
   ]);
+  const { items: customers, page, totalCount, totalPages } = customerResult;
+  const from = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const to = totalCount === 0 ? 0 : from + customers.length - 1;
   const canEdit = canManageData(role);
+
+  const pageHref = (nextPage: number) => {
+    const params = new URLSearchParams();
+
+    if (group) {
+      params.set("group", group);
+    }
+
+    params.set("page", String(nextPage));
+
+    return `/customers?${params.toString()}`;
+  };
 
   return (
     <section className="space-y-6">
@@ -148,6 +176,37 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
             )}
           </tbody>
         </table>
+
+        <div className="flex flex-col gap-3 border-t border-stone-200 px-5 py-4 text-sm text-stone-600 sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Showing {from}-{to} of {totalCount}
+          </p>
+          <div className="flex items-center gap-3">
+            {page > 1 ? (
+              <Link
+                href={pageHref(page - 1)}
+                className="rounded-xl border border-stone-300 px-4 py-2 font-medium text-stone-700 transition hover:bg-stone-50"
+              >
+                Previous
+              </Link>
+            ) : (
+              <span className="rounded-xl border border-stone-200 px-4 py-2 text-stone-400">Previous</span>
+            )}
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            {page < totalPages ? (
+              <Link
+                href={pageHref(page + 1)}
+                className="rounded-xl border border-stone-300 px-4 py-2 font-medium text-stone-700 transition hover:bg-stone-50"
+              >
+                Next
+              </Link>
+            ) : (
+              <span className="rounded-xl border border-stone-200 px-4 py-2 text-stone-400">Next</span>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );

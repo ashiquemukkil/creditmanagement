@@ -39,6 +39,14 @@ export type BillListItem = BillRecord & {
   totalAmount: number;
 };
 
+export type PaginatedBillsResult = {
+  items: BillListItem[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+};
+
 type BillRow = BillRecord & {
   customer: {
     name: string;
@@ -279,4 +287,23 @@ export async function listBills(filters: ListBillsFilters = {}): Promise<BillLis
     outstandingTotalAmount: billOutstandingTotalAmount(bill),
     totalAmount: billTotalAmount(bill),
   }));
+}
+
+export async function listBillsPaginated(
+  filters: ListBillsFilters & { page: number; pageSize: number },
+): Promise<PaginatedBillsResult> {
+  const pageSize = Math.max(1, Math.floor(filters.pageSize));
+  const allBills = await listBills(filters);
+  const totalCount = allBills.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(Math.max(1, Math.floor(filters.page)), totalPages);
+  const start = (page - 1) * pageSize;
+
+  return {
+    items: allBills.slice(start, start + pageSize),
+    page,
+    pageSize,
+    totalCount,
+    totalPages,
+  };
 }

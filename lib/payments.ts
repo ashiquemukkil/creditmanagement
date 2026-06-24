@@ -41,6 +41,14 @@ export type PaymentListItem = PaymentRecord & {
   unallocatedAmount: number;
 };
 
+export type PaginatedPaymentsResult = {
+  items: PaymentListItem[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+};
+
 type CustomerRelation = { name: string } | Array<{ name: string }> | null;
 
 type PaymentRow = PaymentRecord & {
@@ -142,6 +150,25 @@ export async function listPayments(filters: ListPaymentsFilters = {}): Promise<P
       unallocatedAmount,
     };
   });
+}
+
+export async function listPaymentsPaginated(
+  filters: ListPaymentsFilters & { page: number; pageSize: number },
+): Promise<PaginatedPaymentsResult> {
+  const pageSize = Math.max(1, Math.floor(filters.pageSize));
+  const allPayments = await listPayments(filters);
+  const totalCount = allPayments.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(Math.max(1, Math.floor(filters.page)), totalPages);
+  const start = (page - 1) * pageSize;
+
+  return {
+    items: allPayments.slice(start, start + pageSize),
+    page,
+    pageSize,
+    totalCount,
+    totalPages,
+  };
 }
 
 export async function listPaymentOptions(): Promise<
