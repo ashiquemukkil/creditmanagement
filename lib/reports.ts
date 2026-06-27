@@ -99,8 +99,16 @@ type BillReportRow = {
   gold_due_date: string | null;
   id: string;
   status: "open" | "partial" | "closed";
-  customers: Array<{ name: string }> | null;
+  customers: { name: string } | Array<{ name: string }> | null;
 };
+
+function getCustomerName(customers: { name: string } | Array<{ name: string }> | null | undefined) {
+  if (!customers) {
+    return "Unknown customer";
+  }
+
+  return Array.isArray(customers) ? (customers[0]?.name ?? "Unknown customer") : customers.name;
+}
 
 function emptyBuckets(): Record<AgingBucket, { diamond: number; gold: number }> {
   return {
@@ -177,7 +185,7 @@ export async function getOutstandingStatement(customerId?: string, groupId?: str
           billDate: bill.bill_date,
           billId: bill.id,
           billNumber: bill.bill_number,
-          customerName: bill.customers?.[0]?.name ?? "Unknown customer",
+          customerName: getCustomerName(bill.customers),
           diamondDue: diamondOutstanding - diamondOverdue,
           diamondOverdue,
           diamondOutstanding,
@@ -223,7 +231,7 @@ export async function getAgingReport(groupId?: string) {
       {
         buckets: emptyBuckets(),
         customerId: bill.customer_id,
-        customerName: bill.customers?.[0]?.name ?? "Unknown customer",
+        customerName: getCustomerName(bill.customers),
         totalOutstanding: 0,
       };
 
@@ -527,7 +535,7 @@ export async function getCalendarReport(month: string, customerId?: string): Pro
     bill_date: string;
     bill_number: string;
     customer_id: string;
-    customers: Array<{ name: string }> | null;
+    customers: { name: string } | Array<{ name: string }> | null;
     diamond_amount: number;
     gold_amount: number;
     id: string;
@@ -544,7 +552,7 @@ export async function getCalendarReport(month: string, customerId?: string): Pro
       billId: bill.id,
       billNumber: bill.bill_number,
       customerId: bill.customer_id,
-      customerName: bill.customers?.[0]?.name ?? "Unknown customer",
+      customerName: getCustomerName(bill.customers),
       diamondAmount,
       diamondPaid,
       goldAmount,
@@ -558,7 +566,7 @@ export async function getCalendarReport(month: string, customerId?: string): Pro
   ((payments ?? []) as Array<{
     amount: number;
     customer_id: string;
-    customers: Array<{ name: string }> | null;
+    customers: { name: string } | Array<{ name: string }> | null;
     id: string;
     notes: string | null;
     payment_allocations: Array<{
@@ -589,7 +597,7 @@ export async function getCalendarReport(month: string, customerId?: string): Pro
       })),
       amount: Number(payment.amount),
       customerId: payment.customer_id,
-      customerName: payment.customers?.[0]?.name ?? "Unknown customer",
+      customerName: getCustomerName(payment.customers),
       notes: payment.notes,
       paymentDate: payment.payment_date,
       paymentId: payment.id,
