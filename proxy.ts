@@ -149,11 +149,11 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  const { data, error } = await withTimeout(
+  const { data, error } = (await withTimeout(
     supabase.from("users").select("is_active").eq("id", user.id).maybeSingle(),
     SUPABASE_PROXY_TIMEOUT_MS,
     "supabase.users.is_active",
-  );
+  )) as { data: { is_active: boolean } | null; error: any };
 
   if (error) {
     if (isAuthRetryableFetchError(error)) {
