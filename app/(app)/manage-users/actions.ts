@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getCurrentUserRole, type AppRole } from "@/lib/auth";
-import { sendInvitationEmail } from "@/lib/invitation-email";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient, createSupabaseServerClient } from "@/lib/supabase/server";
 import type { InvitationActionState } from "./invitation-state";
 
 const allowedRoles: AppRole[] = ["admin", "collaborator", "viewer"];
@@ -21,11 +20,60 @@ function isMissingRelationError(error: unknown, relationName: string) {
   );
 }
 
-export async function createInvitationAction(formData: FormData) {
-  await createInvitation(formData);
+function isAuthEmailAlreadyRegisteredError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message.toLowerCase().includes("already been registered")
+  );
 }
 
-async function createInvitation(formData: FormData) {
+type AuthUserSummary = {
+  id: string;
+  email?: string | null;
+  user_metadata?: {
+    name?: string;
+  } | null;
+};
+
+async function findAuthUserByEmail(
+  adminClient: Awaited<ReturnType<typeof createSupabaseAdminClient>>,
+  email: string,
+) {
+  let page = 1;
+  const perPage = 200;
+
+  while (page <= 10) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+
+    if (error) {
+      throw new Error(`Failed to look up existing auth users: ${error.message}`);
+    }
+
+    const users = (data.users ?? []) as AuthUserSummary[];
+    const matchedUser = users.find((user) => user.email?.toLowerCase() === email);
+
+    if (matchedUser) {
+      return matchedUser;
+    }
+
+    if (!data.nextPage) {
+      break;
+    }
+
+    page = data.nextPage;
+  }
+
+  return null;
+}
+
+export async function createInvitationAction(formData: FormData) {
+  await createUser(formData);
+}
+
+async function createUser(formData: FormData) {
   const requesterRole = await getCurrentUserRole();
 
   if (requesterRole !== "admin") {
@@ -33,86 +81,103 @@ async function createInvitation(formData: FormData) {
   }
 
   const email = String(formData.get("email") || "").trim().toLowerCase();
+  const password = String(formData.get("password") || "").trim();
   const role = String(formData.get("role") || "").trim() as AppRole;
 
-  if (!email || !allowedRoles.includes(role)) {
-    throw new Error("Invalid invitation request");
+  if (!email || !password || !allowedRoles.includes(role)) {
+    throw new Error("Invalid user creation request");
   }
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Unauthorized");
+  if (password.length < 6) {
+    throw new Error("Password must be at least 6 characters");
   }
 
-  const { data: existingInvitation, error: existingInvitationError } = await supabase
-    .from("user_invitations")
+  const adminClient = await createSupabaseAdminClient();
+  const serverClient = await createSupabaseServerClient();
+
+  // Check if user already exists
+  const { data: existingUser, error: existingUserError } = await serverClient
+    .from("users")
     .select("id")
-    .eq("email", email)
-    .is("accepted_at", null)
+    .ilike("email", email)
     .maybeSingle();
 
-  if (existingInvitationError) {
-    if (isMissingRelationError(existingInvitationError, "public.user_invitations")) {
-      throw new Error("Invitation table is missing. Apply sql/009_pending_user_activation.sql first.");
-    }
-
-    throw existingInvitationError;
+  if (existingUserError && !isMissingRelationError(existingUserError, "public.users")) {
+    throw existingUserError;
   }
 
-  if (existingInvitation) {
-    const { error } = await supabase
-      .from("user_invitations")
-      .update({ invited_by: user.id, role })
-      .eq("id", existingInvitation.id);
+  if (existingUser) {
+    throw new Error("User with this email already exists");
+  }
 
-    if (error) {
-      if (isMissingRelationError(error, "public.user_invitations")) {
-        throw new Error("Invitation table is missing. Apply sql/009_pending_user_activation.sql first.");
-      }
+  let authUserId: string | null = null;
+  let authUserName: string | undefined;
+  let newlyCreatedAuthUserId: string | null = null;
 
-      throw error;
+  // Create user in Supabase auth using admin API.
+  const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+
+  if (authError) {
+    if (!isAuthEmailAlreadyRegisteredError(authError)) {
+      throw new Error(`Failed to create user: ${authError.message}`);
     }
-  } else {
-    const { error } = await supabase.from("user_invitations").insert({
+
+    const existingAuthUser = await findAuthUserByEmail(adminClient, email);
+
+    if (!existingAuthUser) {
+      throw new Error(
+        "This email already exists in authentication, but no matching auth user could be resolved.",
+      );
+    }
+
+    authUserId = existingAuthUser.id;
+    authUserName = existingAuthUser.user_metadata?.name;
+  } else if (authData.user) {
+    authUserId = authData.user.id;
+    authUserName = (authData.user.user_metadata?.name as string | undefined) ?? undefined;
+    newlyCreatedAuthUserId = authData.user.id;
+  }
+
+  if (!authUserId) {
+    throw new Error("Failed to create or resolve user account");
+  }
+
+  // Upsert user record because auth trigger might already have inserted one.
+  const { error: userTableError } = await serverClient.from("users").upsert(
+    {
+      id: authUserId,
       email,
-      invited_by: user.id,
       role,
-    });
+      is_active: true,
+      name: authUserName?.trim() || email.split("@")[0],
+    },
+    {
+      onConflict: "id",
+    },
+  );
 
-    if (error) {
-      if (isMissingRelationError(error, "public.user_invitations")) {
-        throw new Error("Invitation table is missing. Apply sql/009_pending_user_activation.sql first.");
-      }
-
-      throw error;
+  if (userTableError) {
+    // Try to clean up the auth user if table insert fails
+    if (newlyCreatedAuthUserId) {
+      await adminClient.auth.admin.deleteUser(newlyCreatedAuthUserId).catch(() => {
+        // Ignore cleanup errors
+      });
     }
-  }
 
-  let deliveryErrorMessage: string | null = null;
-
-  try {
-    await sendInvitationEmail(email, role);
-  } catch (error) {
-    deliveryErrorMessage =
-      error instanceof Error
-        ? error.message
-        : "Unknown email delivery error. Check server logs.";
-
-    if (error instanceof Error) {
-      console.error(`Invitation saved but email delivery failed for ${email}: ${error.message}`);
-    } else {
-      console.error(`Invitation saved but email delivery failed for ${email}.`);
+    if (isMissingRelationError(userTableError, "public.users")) {
+      throw new Error("Users table is missing.");
     }
+
+    throw new Error(`Failed to create or update user profile: ${userTableError.message}`);
   }
 
   revalidatePath("/manage-users");
 
   return {
-    deliveryErrorMessage,
     email,
     role,
   };
@@ -123,23 +188,16 @@ export async function createInvitationActionWithState(
   formData: FormData,
 ): Promise<InvitationActionState> {
   try {
-    const result = await createInvitation(formData);
-
-    if (result.deliveryErrorMessage) {
-      return {
-        message: `Invitation for ${result.email} was saved, but delivery failed: ${result.deliveryErrorMessage}`,
-        tone: "warning",
-      };
-    }
+    const result = await createUser(formData);
 
     return {
-      message: `Invitation email sent to ${result.email}.`,
+      message: `User ${result.email} created successfully with ${result.role} role.`,
       tone: "success",
     };
   } catch (error) {
     return {
       message:
-        error instanceof Error ? error.message : "Unable to create invitation. Please try again.",
+        error instanceof Error ? error.message : "Unable to create user. Please try again.",
       tone: "error",
     };
   }

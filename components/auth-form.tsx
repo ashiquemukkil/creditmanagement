@@ -32,58 +32,62 @@ export function AuthForm({
     setError(null);
 
     startTransition(async () => {
-      const email = String(formData.get("email") || "").trim();
-      const password = String(formData.get("password") || "");
-      const name = String(formData.get("name") || "").trim();
+      try {
+        const email = String(formData.get("email") || "").trim();
+        const password = String(formData.get("password") || "");
+        const name = String(formData.get("name") || "").trim();
 
-      if (!email || !password || (isSignup && !name)) {
-        setError("Please complete all required fields.");
-        return;
-      }
+        if (!email || !password || (isSignup && !name)) {
+          setError("Please complete all required fields.");
+          return;
+        }
 
-      if (isSignup) {
-        const { data, error: signUpError } = await supabase.auth.signUp({
+        if (isSignup) {
+          const { data, error: signUpError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                name,
+              },
+            },
+          });
+
+          if (signUpError) {
+            setError(signUpError.message);
+            return;
+          }
+
+          router.refresh();
+
+          if (data.session) {
+            await supabase.auth.signOut();
+          }
+
+          router.replace(
+            "/login?message=" +
+              encodeURIComponent(
+                "Account created. If your email was invited, you can log in now. Otherwise wait for admin activation.",
+              ),
+          );
+          return;
+        }
+
+        const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
-          options: {
-            data: {
-              name,
-            },
-          },
         });
 
-        if (signUpError) {
-          setError(signUpError.message);
+        if (signInError) {
+          setError(signInError.message);
           return;
         }
 
         router.refresh();
-
-        if (data.session) {
-          await supabase.auth.signOut();
-        }
-
-        router.replace(
-          "/login?message=" +
-            encodeURIComponent(
-              "Account created. If your email was invited, you can log in now. Otherwise wait for admin activation.",
-            ),
-        );
-        return;
+        router.replace(redirectTo);
+      } catch {
+        setError("Unable to reach Supabase. Check your Supabase URL and internet connection, then try again.");
       }
-
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (signInError) {
-        setError(signInError.message);
-        return;
-      }
-
-      router.refresh();
-      router.replace(redirectTo);
     });
   }
 

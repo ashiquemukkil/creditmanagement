@@ -41,6 +41,17 @@ export function InvitationForm() {
           placeholder="staff@business.com"
         />
       </label>
+      <label className="block flex-1 space-y-2 text-sm font-medium text-stone-700">
+        <span>Password</span>
+        <input
+          required
+          name="password"
+          type="password"
+          minLength={6}
+          className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-600"
+          placeholder="Minimum 6 characters"
+        />
+      </label>
       <label className="block space-y-2 text-sm font-medium text-stone-700">
         <span>Role</span>
         <select
@@ -60,7 +71,7 @@ export function InvitationForm() {
         disabled={pending}
         className="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {pending ? "Sending..." : "Send invitation"}
+        {pending ? "Creating..." : "Add user"}
       </button>
 
       <p

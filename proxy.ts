@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
 const publicRoutes = new Set(["/login", "/signup"]);
+const SUPABASE_PROXY_TIMEOUT_MS = 2500;
 
 function isMissingAuthSession(error: unknown) {
   return (
@@ -11,20 +12,89 @@ function isMissingAuthSession(error: unknown) {
   );
 }
 
+function isInvalidRefreshTokenError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code = "code" in error ? error.code : undefined;
+  if (code === "refresh_token_not_found" || code === "invalid_refresh_token") {
+    return true;
+  }
+
+  const message = "message" in error && typeof error.message === "string" ? error.message : "";
+
+  return (
+    message.includes("Invalid Refresh Token") ||
+    message.includes("Refresh Token Not Found") ||
+    message.includes("refresh token")
+  );
+}
+
+function isAuthRetryableFetchError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const name = "name" in error ? error.name : undefined;
+  const message = "message" in error && typeof error.message === "string" ? error.message : "";
+
+  return name === "AuthRetryableFetchError" || message.includes("fetch failed");
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+function clearSupabaseAuthCookies(request: NextRequest, response: NextResponse) {
+  request.cookies
+    .getAll()
+    .filter(
+      (cookie) =>
+        cookie.name.startsWith("sb-") &&
+        (cookie.name.includes("auth-token") || cookie.name.includes("refresh-token")),
+    )
+    .forEach((cookie) => {
+      response.cookies.delete(cookie.name);
+    });
+}
+
 export async function proxy(request: NextRequest) {
   const { response, supabase } = updateSession(request);
   let user = null;
   let hasAuthRefreshRace = false;
+  let hasRecoverableAuthError = false;
+  let hasAuthConnectivityIssue = false;
 
   try {
     const {
       data: { user: resolvedUser },
       error,
-    } = await supabase.auth.getUser();
+    } = await withTimeout(supabase.auth.getUser(), SUPABASE_PROXY_TIMEOUT_MS, "supabase.auth.getUser");
 
     if (error) {
       if (isMissingAuthSession(error)) {
         user = null;
+      } else if (isInvalidRefreshTokenError(error)) {
+        user = null;
+        hasRecoverableAuthError = true;
+      } else if (isAuthRetryableFetchError(error)) {
+        user = null;
+        hasAuthConnectivityIssue = true;
       } else if ((error as { status?: number }).status !== 409) {
         throw error;
       } else {
@@ -36,11 +106,21 @@ export async function proxy(request: NextRequest) {
   } catch (error) {
     if (isMissingAuthSession(error)) {
       user = null;
+    } else if (isInvalidRefreshTokenError(error)) {
+      user = null;
+      hasRecoverableAuthError = true;
+    } else if (isAuthRetryableFetchError(error) || (error instanceof Error && error.message.includes("timed out"))) {
+      user = null;
+      hasAuthConnectivityIssue = true;
     } else if ((error as { status?: number }).status !== 409) {
       throw error;
     } else {
       hasAuthRefreshRace = true;
     }
+  }
+
+  if (hasRecoverableAuthError) {
+    clearSupabaseAuthCookies(request, response);
   }
 
   if (hasAuthRefreshRace) {
@@ -65,13 +145,21 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  const { data, error } = await supabase
-    .from("users")
-    .select("is_active")
-    .eq("id", user.id)
-    .maybeSingle();
+  if (hasAuthConnectivityIssue) {
+    return response;
+  }
+
+  const { data, error } = await withTimeout(
+    supabase.from("users").select("is_active").eq("id", user.id).maybeSingle(),
+    SUPABASE_PROXY_TIMEOUT_MS,
+    "supabase.users.is_active",
+  );
 
   if (error) {
+    if (isAuthRetryableFetchError(error)) {
+      return response;
+    }
+
     throw error;
   }
 
