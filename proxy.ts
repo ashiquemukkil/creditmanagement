@@ -42,7 +42,7 @@ function isAuthRetryableFetchError(error: unknown) {
   return name === "AuthRetryableFetchError" || message.includes("fetch failed");
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, label: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
