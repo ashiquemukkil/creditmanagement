@@ -25,7 +25,7 @@ function formatDueDays(days: number | null) {
 }
 
 async function buildOutstandingStatementPdf(
-  filters: { customerId?: string; groupId?: string },
+  filters: { customerId?: string; customerLabel?: string; groupId?: string },
   rows: Awaited<ReturnType<typeof getOutstandingStatement>>,
 ) {
   const pdf = await PDFDocument.create();
@@ -98,7 +98,9 @@ async function buildOutstandingStatementPdf(
 
   drawText("Outstanding Statement", 16, { bold: true });
   y -= 20;
-  drawText(`Customer: ${filters.customerId ?? "All customers"}`, 10, { color: { b: 0.3, g: 0.3, r: 0.3 } });
+  drawText(`Company: ${filters.customerLabel ?? filters.customerId ?? "All companies"}`, 10, {
+    color: { b: 0.3, g: 0.3, r: 0.3 },
+  });
   y -= 14;
   drawText(`Group: ${filters.groupId ?? "All groups"}`, 10, { color: { b: 0.3, g: 0.3, r: 0.3 } });
   y -= 14;
@@ -141,9 +143,10 @@ async function buildOutstandingStatementPdf(
   y -= 16;
 
   const columnX = (key: string) => columnXByKey.get(key) ?? margins.left;
+  const showCustomerPerRow = !filters.customerId;
 
   rows.forEach((row) => {
-    ensureSpace(22);
+    ensureSpace(showCustomerPerRow ? 22 : 14);
     drawText((row.entryType === "advance" ? "ADVANCE" : row.billNumber).slice(0, 14), 8, { x: columnX("invoice") });
     drawText(row.billDate, 8, { x: columnX("date") });
     drawText(formatAmount(row.goldOutstanding), 8, { x: columnX("goldOut") });
@@ -157,11 +160,15 @@ async function buildOutstandingStatementPdf(
     drawText(formatAmount(row.amountOutstanding), 8, { x: columnX("total") });
     y -= 12;
 
-    drawText(`Customer: ${row.customerName}`.slice(0, 95), 8, {
-      color: { b: 0.35, g: 0.35, r: 0.35 },
-      x: margins.left,
-    });
-    y -= 10;
+    if (showCustomerPerRow) {
+      drawText(`Customer: ${row.customerName}`.slice(0, 95), 8, {
+        color: { b: 0.35, g: 0.35, r: 0.35 },
+        x: margins.left,
+      });
+      y -= 10;
+    } else {
+      y -= 2;
+    }
   });
 
   ensureSpace(220);
@@ -299,6 +306,8 @@ export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get("mode") === "pdf" ? "pdf" : "detailed";
 
   const rows = await getOutstandingStatement(customerId ?? undefined, groupId ?? undefined);
+  const selectedCustomerName =
+    customerId && rows.length > 0 ? rows.find((row) => row.customerName)?.customerName ?? customerId : undefined;
   const summary = rows.reduce(
     (acc, row) => ({
       billCount: acc.billCount + (row.entryType === "bill" ? 1 : 0),
@@ -324,7 +333,11 @@ export async function GET(request: NextRequest) {
 
   if (mode === "pdf") {
     const pdfBytes = await buildOutstandingStatementPdf(
-      { customerId: customerId ?? undefined, groupId: groupId ?? undefined },
+      {
+        customerId: customerId ?? undefined,
+        customerLabel: selectedCustomerName,
+        groupId: groupId ?? undefined,
+      },
       rows,
     );
     const normalizedPdfBytes = Uint8Array.from(pdfBytes);
