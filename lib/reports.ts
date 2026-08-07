@@ -159,10 +159,11 @@ function bucketForDaysOverdue(daysOverdue: number): AgingBucket {
 
 async function listOutstandingBillsBase(customerId?: string, groupId?: string) {
   const supabase = await createSupabaseServerClient();
+  const customerRelation = groupId ? "customers!inner(name, group_id)" : "customers(name, group_id)";
   let query = supabase
     .from("bills")
     .select(
-      "id, customer_id, bill_number, bill_date, gold_amount, diamond_amount, gold_due_date, diamond_due_date, due_date, amount_paid_gold, amount_paid_diamond, status, created_at, customers(name, group_id)",
+      `id, customer_id, bill_number, bill_date, gold_amount, diamond_amount, gold_due_date, diamond_due_date, due_date, amount_paid_gold, amount_paid_diamond, status, created_at, ${customerRelation}`,
     )
     .in("status", ["open", "partial"]);
 
@@ -185,10 +186,11 @@ async function listOutstandingBillsBase(customerId?: string, groupId?: string) {
 
 async function listAdvancePaymentEntries(customerId?: string, groupId?: string): Promise<OutstandingStatementRow[]> {
   const supabase = await createSupabaseServerClient();
+  const customerRelation = groupId ? "customers!inner(name, group_id)" : "customers(name, group_id)";
   let query = supabase
     .from("payments")
     .select(
-      "id, customer_id, payment_date, amount, created_at, customers(name, group_id), payment_allocations(amount_allocated)",
+      `id, customer_id, payment_date, amount, created_at, ${customerRelation}, payment_allocations(amount_allocated)`,
     );
 
   if (customerId) {
