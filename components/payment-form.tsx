@@ -7,6 +7,7 @@ import {
   type AllocatableBillLine,
   createPaymentAction,
   listAllocatableBillLinesAction,
+  updatePaymentAction,
 } from "@/app/(app)/payments/actions";
 import { CustomerPicker } from "@/components/customer-picker";
 import { useToast } from "@/components/toast-provider";
@@ -18,20 +19,35 @@ type CustomerOption = {
 };
 
 type PaymentFormProps = {
+  paymentId?: string;
   customers: CustomerOption[];
   defaultCustomerId?: string;
   defaultPaymentDate: string;
+  initialValues?: {
+    amount: number;
+    customerId: string;
+    notes: string | null;
+    paymentDate: string;
+  };
+  submitLabel?: string;
+  title?: string;
 };
 
 export function PaymentForm({
+  paymentId,
   customers,
   defaultCustomerId,
   defaultPaymentDate,
+  initialValues,
+  submitLabel,
+  title,
 }: PaymentFormProps) {
   const router = useRouter();
   const { showError, showSuccess } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedCustomerId, setSelectedCustomerId] = useState(defaultCustomerId ?? "");
+  const [selectedCustomerId, setSelectedCustomerId] = useState(
+    initialValues?.customerId ?? defaultCustomerId ?? "",
+  );
   const [allocationMode, setAllocationMode] = useState<"automatic" | "manual">("automatic");
   const [allocatableLines, setAllocatableLines] = useState<AllocatableBillLine[]>([]);
   const [manualAmounts, setManualAmounts] = useState<Record<string, string>>({});
@@ -138,7 +154,9 @@ export function PaymentForm({
     );
 
     try {
-      const result = await createPaymentAction(formData);
+      const result = paymentId
+        ? await updatePaymentAction(paymentId, formData)
+        : await createPaymentAction(formData);
 
       if (!result.ok) {
         showError(result.message);
@@ -162,7 +180,9 @@ export function PaymentForm({
         <p className="text-sm font-medium uppercase tracking-[0.24em] text-amber-700">
           Payments
         </p>
-        <h2 className="text-3xl font-semibold tracking-tight text-stone-950">Add payment</h2>
+        <h2 className="text-3xl font-semibold tracking-tight text-stone-950">
+          {title ?? "Add payment"}
+        </h2>
         <p className="max-w-2xl text-sm leading-7 text-stone-600">
           Record a payment and choose automatic overdue allocation or manual bill-wise allocation.
         </p>
@@ -209,7 +229,7 @@ export function PaymentForm({
               required
               name="payment_date"
               type="date"
-              defaultValue={defaultPaymentDate}
+              defaultValue={initialValues?.paymentDate ?? defaultPaymentDate}
               className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-600"
             />
           </label>
@@ -222,6 +242,7 @@ export function PaymentForm({
               step="0.01"
               name="amount"
               type="number"
+              defaultValue={initialValues?.amount}
               className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-600"
               placeholder="0.00"
             />
@@ -233,6 +254,7 @@ export function PaymentForm({
           <textarea
             name="notes"
             rows={4}
+            defaultValue={initialValues?.notes ?? ""}
             className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-amber-600"
             placeholder="Cheque number, UPI reference, or any other details"
           />
@@ -300,7 +322,7 @@ export function PaymentForm({
             disabled={isSubmitting}
             className="rounded-2xl bg-stone-950 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-800"
           >
-            {isSubmitting ? "Creating..." : "Create payment"}
+            {isSubmitting ? "Saving..." : (submitLabel ?? "Create payment")}
           </button>
         </div>
       </form>

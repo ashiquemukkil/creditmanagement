@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { DeletePaymentButton } from "@/components/delete-payment-button";
 import { canManageData, getCurrentUserRole } from "@/lib/auth";
 import { listCustomerOptions } from "@/lib/customers";
 import { listGroups } from "@/lib/groups";
@@ -169,12 +170,13 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
               <th className="px-5 py-4">Notes</th>
               <th className="px-5 py-4">Allocation</th>
               <th className="px-5 py-4">Breakdown</th>
+              {canCreate ? <th className="px-5 py-4">Actions</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-200">
             {payments.length === 0 ? (
               <tr>
-                <td className="px-5 py-8 text-stone-500" colSpan={6}>
+                <td className="px-5 py-8 text-stone-500" colSpan={canCreate ? 7 : 6}>
                   No payments recorded yet.
                 </td>
               </tr>
@@ -214,6 +216,19 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
                       </div>
                     )}
                   </td>
+                  {canCreate ? (
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <Link
+                          href={`/payments/${payment.id}/edit`}
+                          className="text-sm font-medium text-stone-700 transition hover:text-amber-700"
+                        >
+                          Edit
+                        </Link>
+                        <DeletePaymentButton paymentId={payment.id} />
+                      </div>
+                    </td>
+                  ) : null}
                 </tr>
               ))
             )}

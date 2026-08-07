@@ -152,6 +152,11 @@ export async function listPayments(filters: ListPaymentsFilters = {}): Promise<P
   });
 }
 
+export async function getPaymentById(id: string): Promise<PaymentListItem | null> {
+  const results = await listPayments({ paymentId: id });
+  return results[0] ?? null;
+}
+
 export async function listPaymentsPaginated(
   filters: ListPaymentsFilters & { page: number; pageSize: number },
 ): Promise<PaginatedPaymentsResult> {
