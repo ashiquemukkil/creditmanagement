@@ -53,18 +53,26 @@ async function buildOutstandingStatementPdf(
 
   const summary = rows.reduce(
     (acc, row) => ({
+      advanceBalance:
+        acc.advanceBalance + (row.entryType === "advance" ? Math.abs(row.amountOutstanding) : 0),
+      billCount: acc.billCount + (row.entryType === "bill" ? 1 : 0),
       diamondDue: acc.diamondDue + row.diamondDue,
       diamondOutstanding: acc.diamondOutstanding + row.diamondOutstanding,
       diamondOverdue: acc.diamondOverdue + row.diamondOverdue,
+      grossOutstanding:
+        acc.grossOutstanding + (row.entryType === "bill" ? row.amountOutstanding : 0),
       goldDue: acc.goldDue + row.goldDue,
       goldOutstanding: acc.goldOutstanding + row.goldOutstanding,
       goldOverdue: acc.goldOverdue + row.goldOverdue,
       totalOutstanding: acc.totalOutstanding + row.amountOutstanding,
     }),
     {
+      advanceBalance: 0,
+      billCount: 0,
       diamondDue: 0,
       diamondOutstanding: 0,
       diamondOverdue: 0,
+      grossOutstanding: 0,
       goldDue: 0,
       goldOutstanding: 0,
       goldOverdue: 0,
@@ -114,7 +122,7 @@ async function buildOutstandingStatementPdf(
 
   rows.forEach((row) => {
     ensureSpace(22);
-    drawText(row.billNumber.slice(0, 14), 8, { x: margins.left });
+    drawText((row.entryType === "advance" ? "ADVANCE" : row.billNumber).slice(0, 14), 8, { x: margins.left });
     drawText(row.billDate, 8, { x: margins.left + 56 });
     drawText(formatAmount(row.goldOutstanding), 8, { x: margins.left + 110 });
     drawText(formatAmount(row.goldDue), 8, { x: margins.left + 160 });
@@ -136,7 +144,7 @@ async function buildOutstandingStatementPdf(
   y -= 8;
   drawText("Summary", 12, { bold: true });
   y -= 16;
-  drawText(`Bills: ${rows.length}`, 10);
+  drawText(`Bills: ${summary.billCount}`, 10);
   y -= 14;
   drawText(`Gold Outstanding: ${formatAmount(summary.goldOutstanding)}`, 10);
   y -= 12;
@@ -149,8 +157,12 @@ async function buildOutstandingStatementPdf(
   drawText(`Diamond Due: ${formatAmount(summary.diamondDue)}`, 10);
   y -= 12;
   drawText(`Diamond Overdue: ${formatAmount(summary.diamondOverdue)}`, 10);
+  y -= 14;
+  drawText(`Advance Balance: ${formatAmount(summary.advanceBalance)}`, 10);
+  y -= 12;
+  drawText(`Gross Outstanding: ${formatAmount(summary.grossOutstanding)}`, 10);
   y -= 16;
-  drawText(`Total Outstanding: ${formatAmount(summary.totalOutstanding)}`, 11, { bold: true });
+  drawText(`Net Outstanding: ${formatAmount(summary.totalOutstanding)}`, 11, { bold: true });
 
   const bytes = await pdf.save();
 
@@ -186,6 +198,7 @@ export async function GET(request: NextRequest) {
 
   const detailedRows = [
     [
+      "Entry Type",
       "Customer",
       "Invoice Number",
       "Date",
@@ -198,8 +211,9 @@ export async function GET(request: NextRequest) {
       "Total Outstanding",
     ],
     ...rows.map((row) => [
+      row.entryType,
       row.customerName,
-      row.billNumber,
+      row.entryType === "advance" ? "ADVANCE PAYMENT" : row.billNumber,
       row.billDate,
       row.goldOutstanding.toFixed(2),
       row.goldDue.toFixed(2),

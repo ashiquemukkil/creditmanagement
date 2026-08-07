@@ -38,18 +38,26 @@ export default async function OutstandingStatementPage({ searchParams }: Outstan
   const rows = await getOutstandingStatement(customer, group);
   const summary = rows.reduce(
     (acc, row) => ({
+      advanceBalance:
+        acc.advanceBalance + (row.entryType === "advance" ? Math.abs(row.amountOutstanding) : 0),
+      billCount: acc.billCount + (row.entryType === "bill" ? 1 : 0),
       diamondDue: acc.diamondDue + row.diamondDue,
       diamondOutstanding: acc.diamondOutstanding + row.diamondOutstanding,
       diamondOverdue: acc.diamondOverdue + row.diamondOverdue,
+      grossOutstanding:
+        acc.grossOutstanding + (row.entryType === "bill" ? row.amountOutstanding : 0),
       goldDue: acc.goldDue + row.goldDue,
       goldOutstanding: acc.goldOutstanding + row.goldOutstanding,
       goldOverdue: acc.goldOverdue + row.goldOverdue,
       totalOutstanding: acc.totalOutstanding + row.amountOutstanding,
     }),
     {
+      advanceBalance: 0,
+      billCount: 0,
       diamondDue: 0,
       diamondOutstanding: 0,
       diamondOverdue: 0,
+      grossOutstanding: 0,
       goldDue: 0,
       goldOutstanding: 0,
       goldOverdue: 0,
@@ -175,7 +183,9 @@ export default async function OutstandingStatementPage({ searchParams }: Outstan
                 {rows.map((row) => (
                   <tr key={row.billId} className="text-stone-700">
                     <td className="px-5 py-4 font-medium text-stone-950">{row.customerName}</td>
-                    <td className="px-5 py-4 font-medium text-stone-950">{row.billNumber}</td>
+                    <td className="px-5 py-4 font-medium text-stone-950">
+                      {row.entryType === "advance" ? "Advance payment" : row.billNumber}
+                    </td>
                     <td className="px-5 py-4">{formatDate(row.billDate)}</td>
                     <td className="px-5 py-4 font-medium text-stone-950">{formatCurrency(row.goldOutstanding)}</td>
                     <td className="px-5 py-4">{formatCurrency(row.goldDue)}</td>
@@ -194,7 +204,7 @@ export default async function OutstandingStatementPage({ searchParams }: Outstan
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <article className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">Bills</p>
-                <p className="mt-2 text-2xl font-semibold text-stone-950">{rows.length}</p>
+                <p className="mt-2 text-2xl font-semibold text-stone-950">{summary.billCount}</p>
               </article>
               <article className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Gold totals</p>
@@ -211,6 +221,8 @@ export default async function OutstandingStatementPage({ searchParams }: Outstan
               <article className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Grand total</p>
                 <p className="mt-2 text-2xl font-semibold text-stone-950">{formatCurrency(summary.totalOutstanding)}</p>
+                <p className="text-sm text-stone-700">Gross: {formatCurrency(summary.grossOutstanding)}</p>
+                <p className="text-sm text-stone-700">Advance: -{formatCurrency(summary.advanceBalance)}</p>
               </article>
             </div>
           </div>

@@ -21,6 +21,7 @@ export type OutstandingStatementRow = {
   diamondDue: number;
   diamondOverdue: number;
   diamondOutstanding: number;
+  entryType: "bill" | "advance";
   goldDue: number;
   goldOverdue: number;
   goldOutstanding: number;
@@ -102,6 +103,20 @@ type BillReportRow = {
   customers: { name: string } | Array<{ name: string }> | null;
 };
 
+type PaymentAdvanceReportRow = {
+  amount: number;
+  created_at: string;
+  customer_id: string;
+  customers: { name: string } | Array<{ name: string }> | null;
+  id: string;
+  payment_allocations:
+    | Array<{
+        amount_allocated: number;
+      }>
+    | null;
+  payment_date: string;
+};
+
 function getCustomerName(customers: { name: string } | Array<{ name: string }> | null | undefined) {
   if (!customers) {
     return "Unknown customer";
@@ -166,11 +181,91 @@ async function listOutstandingBillsBase(customerId?: string, groupId?: string) {
   return (data ?? []) as BillReportRow[];
 }
 
+async function listAdvancePaymentEntries(customerId?: string, groupId?: string): Promise<OutstandingStatementRow[]> {
+  const supabase = await createSupabaseServerClient();
+  let query = supabase
+    .from("payments")
+    .select(
+      "id, customer_id, payment_date, amount, created_at, customers(name, group_id), payment_allocations(amount_allocated)",
+    );
+
+  if (customerId) {
+    query = query.eq("customer_id", customerId);
+  }
+
+  if (groupId) {
+    query = query.eq("customers.group_id", groupId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  const advanceByCustomer = new Map<
+    string,
+    {
+      amount: number;
+      customerName: string;
+      latestDate: string;
+    }
+  >();
+
+  ((data ?? []) as PaymentAdvanceReportRow[]).forEach((payment) => {
+    const allocatedAmount = (payment.payment_allocations ?? []).reduce(
+      (sum, allocation) => sum + Number(allocation.amount_allocated),
+      0,
+    );
+    const unallocatedAmount = Math.max(Number(payment.amount) - allocatedAmount, 0);
+
+    if (unallocatedAmount <= 0) {
+      return;
+    }
+
+    const existing = advanceByCustomer.get(payment.customer_id);
+
+    if (!existing) {
+      advanceByCustomer.set(payment.customer_id, {
+        amount: unallocatedAmount,
+        customerName: getCustomerName(payment.customers),
+        latestDate: payment.payment_date,
+      });
+
+      return;
+    }
+
+    advanceByCustomer.set(payment.customer_id, {
+      amount: existing.amount + unallocatedAmount,
+      customerName: existing.customerName,
+      latestDate: payment.payment_date > existing.latestDate ? payment.payment_date : existing.latestDate,
+    });
+  });
+
+  return Array.from(advanceByCustomer.entries()).map(([customerIdKey, summary]) => ({
+    amountOutstanding: -summary.amount,
+    billDate: summary.latestDate,
+    billId: `advance-${customerIdKey}`,
+    billNumber: "ADVANCE PAYMENT",
+    customerName: summary.customerName,
+    diamondDue: 0,
+    diamondOverdue: 0,
+    diamondOutstanding: 0,
+    entryType: "advance",
+    goldDue: 0,
+    goldOverdue: 0,
+    goldOutstanding: 0,
+  }));
+}
+
 export async function getOutstandingStatement(customerId?: string, groupId?: string) {
-  const rows = await listOutstandingBillsBase(customerId, groupId);
+  const [rows, advanceRows] = await Promise.all([
+    listOutstandingBillsBase(customerId, groupId),
+    listAdvancePaymentEntries(customerId, groupId),
+  ]);
   const dueDateSortByBillId = new Map(rows.map((bill) => [bill.id, billDueDateSortValue(bill) ?? ""]));
 
-  const statementRows = rows
+  const billStatementRows = rows
     .map((bill) => {
       const goldOutstanding = billOutstandingGoldAmount(bill);
       const diamondOutstanding = billOutstandingDiamondAmount(bill);
@@ -189,14 +284,24 @@ export async function getOutstandingStatement(customerId?: string, groupId?: str
           diamondDue: diamondOutstanding - diamondOverdue,
           diamondOverdue,
           diamondOutstanding,
+          entryType: "bill" as const,
           goldDue: goldOutstanding - goldOverdue,
           goldOverdue,
           goldOutstanding,
         },
+        sortDate: dueDateSortByBillId.get(bill.id) ?? "",
         maxDaysOverdue: Math.max(dueDatesByMetal.get("gold") ?? 0, dueDatesByMetal.get("diamond") ?? 0),
       };
     })
     .filter((bill) => bill.row.amountOutstanding > 0);
+
+  const advanceStatementRows = advanceRows.map((row) => ({
+    row,
+    sortDate: row.billDate,
+    maxDaysOverdue: -1,
+  }));
+
+  const statementRows = [...billStatementRows, ...advanceStatementRows];
 
   return statementRows
     .sort((left, right) => {
@@ -204,10 +309,7 @@ export async function getOutstandingStatement(customerId?: string, groupId?: str
         return right.maxDaysOverdue - left.maxDaysOverdue;
       }
 
-      const leftSortDate = dueDateSortByBillId.get(left.row.billId) ?? "";
-      const rightSortDate = dueDateSortByBillId.get(right.row.billId) ?? "";
-
-      return leftSortDate.localeCompare(rightSortDate);
+      return left.sortDate.localeCompare(right.sortDate);
     })
     .map((bill) => bill.row);
 }
