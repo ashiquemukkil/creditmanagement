@@ -243,7 +243,19 @@ export default async function BillsPage({ searchParams }: BillsPageProps) {
                     </span>
                   </td>
                   <td className="px-5 py-4">
-                    {canCreate ? <DeleteBillButton billId={bill.id} billNumber={bill.bill_number} /> : <span className="text-stone-400">-</span>}
+                    {canCreate ? (
+                      <div className="flex items-center gap-3">
+                        <Link
+                          href={`/bills/${bill.id}/edit`}
+                          className="text-sm font-medium text-stone-700 transition hover:text-amber-700"
+                        >
+                          Edit
+                        </Link>
+                        <DeleteBillButton billId={bill.id} billNumber={bill.bill_number} />
+                      </div>
+                    ) : (
+                      <span className="text-stone-400">-</span>
+                    )}
                   </td>
                 </tr>
               ))
