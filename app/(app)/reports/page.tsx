@@ -26,6 +26,11 @@ const reports = [
     href: "/reports/calendar",
     title: "Calendar report",
   },
+  {
+    description: "Aging report showing outstanding bills categorized by age.",
+    href: "/reports/aging-report",
+    title: "Aging report",
+  },
 ];
 
 export default function ReportsPage() {

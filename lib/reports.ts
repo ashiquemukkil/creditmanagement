@@ -9,8 +9,11 @@ import {
   billTotalAmount,
 } from "@/lib/bills";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { agingBucketLabels, DEFAULT_AGING_THRESHOLDS } from "@/lib/aging-buckets";
 
-export type AgingBucket = "current" | "1-15" | "16-30" | "31-60" | "60+";
+export type AgingBucket = string;
+
+export { agingBucketLabels, DEFAULT_AGING_THRESHOLDS } from "@/lib/aging-buckets";
 
 export type OutstandingStatementRow = {
   amountOutstanding: number;
@@ -30,7 +33,7 @@ export type OutstandingStatementRow = {
 };
 
 export type AgingCustomerRow = {
-  buckets: Record<AgingBucket, { diamond: number; gold: number }>;
+  buckets: Record<string, { diamond: number; gold: number }>;
   customerId: string;
   customerName: string;
   totalOutstanding: number;
@@ -127,34 +130,22 @@ function getCustomerName(customers: { name: string } | Array<{ name: string }> |
   return Array.isArray(customers) ? (customers[0]?.name ?? "Unknown customer") : customers.name;
 }
 
-function emptyBuckets(): Record<AgingBucket, { diamond: number; gold: number }> {
-  return {
-    "1-15": { diamond: 0, gold: 0 },
-    "16-30": { diamond: 0, gold: 0 },
-    "31-60": { diamond: 0, gold: 0 },
-    "60+": { diamond: 0, gold: 0 },
-    current: { diamond: 0, gold: 0 },
-  };
+function emptyBuckets(thresholds: number[]): Record<string, { diamond: number; gold: number }> {
+  return Object.fromEntries(agingBucketLabels(thresholds).map((label) => [label, { diamond: 0, gold: 0 }]));
 }
 
-function bucketForDaysOverdue(daysOverdue: number): AgingBucket {
-  if (daysOverdue <= 0) {
-    return "current";
+function bucketForDaysOverdue(daysOverdue: number, thresholds: number[]): string {
+  if (daysOverdue <= 0) return "current";
+
+  const sorted = [...thresholds].map(Number).filter((n) => Number.isFinite(n) && n > 0).sort((a, b) => a - b);
+  let prev = 0;
+
+  for (const t of sorted) {
+    if (daysOverdue <= t) return `${prev + 1}-${t}`;
+    prev = t;
   }
 
-  if (daysOverdue <= 15) {
-    return "1-15";
-  }
-
-  if (daysOverdue <= 30) {
-    return "16-30";
-  }
-
-  if (daysOverdue <= 60) {
-    return "31-60";
-  }
-
-  return "60+";
+  return `${prev}+`;
 }
 
 async function listOutstandingBillsBase(customerId?: string, groupId?: string) {
@@ -330,10 +321,10 @@ export async function getOutstandingStatement(customerId?: string, groupId?: str
     .map((bill) => bill.row);
 }
 
-export async function getAgingReport(groupId?: string) {
+export async function getAgingReport(groupId?: string, thresholds: number[] = DEFAULT_AGING_THRESHOLDS) {
   const rows = await listOutstandingBillsBase(undefined, groupId);
   const customerMap = new Map<string, AgingCustomerRow>();
-  const bucketTotals = emptyBuckets();
+  const bucketTotals = emptyBuckets(thresholds);
 
   rows.forEach((bill) => {
     const goldOutstanding = billOutstandingGoldAmount(bill);
@@ -347,7 +338,7 @@ export async function getAgingReport(groupId?: string) {
     const row =
       customerMap.get(bill.customer_id) ??
       {
-        buckets: emptyBuckets(),
+        buckets: emptyBuckets(thresholds),
         customerId: bill.customer_id,
         customerName: getCustomerName(bill.customers),
         totalOutstanding: 0,
@@ -360,14 +351,14 @@ export async function getAgingReport(groupId?: string) {
     const dueDateByMetal = new Map(dueDateEntries.map((entry) => [entry.metal, entry.daysOverdue]));
 
     if (goldOutstanding > 0 && bill.gold_due_date) {
-      const goldBucket = bucketForDaysOverdue(dueDateByMetal.get("gold") ?? 0);
+      const goldBucket = bucketForDaysOverdue(dueDateByMetal.get("gold") ?? 0, thresholds);
 
       row.buckets[goldBucket].gold += goldOutstanding;
       bucketTotals[goldBucket].gold += goldOutstanding;
     }
 
     if (diamondOutstanding > 0 && bill.diamond_due_date) {
-      const diamondBucket = bucketForDaysOverdue(dueDateByMetal.get("diamond") ?? 0);
+      const diamondBucket = bucketForDaysOverdue(dueDateByMetal.get("diamond") ?? 0, thresholds);
 
       row.buckets[diamondBucket].diamond += diamondOutstanding;
       bucketTotals[diamondBucket].diamond += diamondOutstanding;
@@ -377,13 +368,15 @@ export async function getAgingReport(groupId?: string) {
   const rowsForTable = Array.from(customerMap.values()).sort(
     (left, right) => right.totalOutstanding - left.totalOutstanding,
   );
-  const chartData = (Object.keys(bucketTotals) as AgingBucket[]).map((bucket) => ({
+  const bucketLabels = agingBucketLabels(thresholds);
+  const chartData = bucketLabels.map((bucket) => ({
     bucket,
     diamond: bucketTotals[bucket].diamond,
     gold: bucketTotals[bucket].gold,
   }));
 
   return {
+    bucketLabels,
     chartData,
     rows: rowsForTable,
   };
