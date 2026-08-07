@@ -43,6 +43,16 @@ type BillOutstandingRow = {
   gold_amount: number;
 };
 
+type PaymentAdvanceRow = {
+  amount: number;
+  customer_id: string;
+  payment_allocations:
+    | Array<{
+        amount_allocated: number;
+      }>
+    | null;
+};
+
 type ListCustomersFilters = {
   groupId?: string;
 };
@@ -58,6 +68,14 @@ function normalizeCustomerRow(customer: SupabaseCustomerRow): CustomerRecord {
   };
 }
 
+function computePaymentAdvanceAmount(payment: PaymentAdvanceRow) {
+  const allocatedAmount = (payment.payment_allocations ?? []).reduce((sum, allocation) => {
+    return sum + Number(allocation.amount_allocated);
+  }, 0);
+
+  return Math.max(Number(payment.amount) - allocatedAmount, 0);
+}
+
 export async function listCustomers(filters: ListCustomersFilters = {}): Promise<CustomerListItem[]> {
   const supabase = await createSupabaseServerClient();
   let customersQuery = supabase
@@ -71,13 +89,20 @@ export async function listCustomers(filters: ListCustomersFilters = {}): Promise
     customersQuery = customersQuery.eq("group_id", filters.groupId);
   }
 
-  const [{ data: customers, error: customersError }, { data: bills, error: billsError }] =
+  const [
+    { data: customers, error: customersError },
+    { data: bills, error: billsError },
+    { data: payments, error: paymentsError },
+  ] =
     await Promise.all([
       customersQuery,
       supabase
         .from("bills")
         .select("customer_id, gold_amount, diamond_amount, amount_paid_gold, amount_paid_diamond")
         .in("status", ["open", "partial"]),
+      supabase
+        .from("payments")
+        .select("customer_id, amount, payment_allocations(amount_allocated)"),
     ]);
 
   if (customersError) {
@@ -88,7 +113,12 @@ export async function listCustomers(filters: ListCustomersFilters = {}): Promise
     throw billsError;
   }
 
+  if (paymentsError) {
+    throw paymentsError;
+  }
+
   const totalsByCustomer = new Map<string, number>();
+  const advanceByCustomer = new Map<string, number>();
 
   ((bills ?? []) as BillOutstandingRow[]).forEach((bill) => {
     const remaining = billOutstandingTotalAmount(bill);
@@ -98,11 +128,20 @@ export async function listCustomers(filters: ListCustomersFilters = {}): Promise
     );
   });
 
+  ((payments ?? []) as PaymentAdvanceRow[]).forEach((payment) => {
+    const advanceAmount = computePaymentAdvanceAmount(payment);
+    advanceByCustomer.set(
+      payment.customer_id,
+      (advanceByCustomer.get(payment.customer_id) ?? 0) + advanceAmount,
+    );
+  });
+
   return ((customers ?? []) as SupabaseCustomerRow[]).map((customer) => {
     const normalized = normalizeCustomerRow(customer);
 
     return {
       ...normalized,
+      advance_amount: advanceByCustomer.get(normalized.id) ?? 0,
       totalOutstanding: totalsByCustomer.get(normalized.id) ?? 0,
     };
   });
@@ -159,14 +198,25 @@ export async function getCustomerById(customerId: string): Promise<CustomerListI
     return null;
   }
 
-  const { data: bills, error: billsError } = await supabase
-    .from("bills")
-    .select("gold_amount, diamond_amount, amount_paid_gold, amount_paid_diamond")
-    .eq("customer_id", customerId)
-    .in("status", ["open", "partial"]);
+  const [{ data: bills, error: billsError }, { data: payments, error: paymentsError }] =
+    await Promise.all([
+      supabase
+        .from("bills")
+        .select("gold_amount, diamond_amount, amount_paid_gold, amount_paid_diamond")
+        .eq("customer_id", customerId)
+        .in("status", ["open", "partial"]),
+      supabase
+        .from("payments")
+        .select("customer_id, amount, payment_allocations(amount_allocated)")
+        .eq("customer_id", customerId),
+    ]);
 
   if (billsError) {
     throw billsError;
+  }
+
+  if (paymentsError) {
+    throw paymentsError;
   }
 
   const totalOutstanding = ((bills ?? []) as Array<{
@@ -179,8 +229,14 @@ export async function getCustomerById(customerId: string): Promise<CustomerListI
     0,
   );
 
+  const advanceAmount = ((payments ?? []) as PaymentAdvanceRow[]).reduce(
+    (sum, payment) => sum + computePaymentAdvanceAmount(payment),
+    0,
+  );
+
   return {
     ...normalizeCustomerRow(customer as SupabaseCustomerRow),
+    advance_amount: advanceAmount,
     totalOutstanding,
   };
 }
