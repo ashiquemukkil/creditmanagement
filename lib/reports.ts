@@ -19,10 +19,12 @@ export type OutstandingStatementRow = {
   billDate: string;
   customerName: string;
   diamondDue: number;
+  diamondDueDays: number | null;
   diamondOverdue: number;
   diamondOutstanding: number;
   entryType: "bill" | "advance";
   goldDue: number;
+  goldDueDays: number | null;
   goldOverdue: number;
   goldOutstanding: number;
 };
@@ -249,10 +251,12 @@ async function listAdvancePaymentEntries(customerId?: string, groupId?: string):
     billNumber: "ADVANCE PAYMENT",
     customerName: summary.customerName,
     diamondDue: 0,
+    diamondDueDays: null,
     diamondOverdue: 0,
     diamondOutstanding: 0,
     entryType: "advance",
     goldDue: 0,
+    goldDueDays: null,
     goldOverdue: 0,
     goldOutstanding: 0,
   }));
@@ -274,6 +278,14 @@ export async function getOutstandingStatement(customerId?: string, groupId?: str
       const goldOverdue = (dueDatesByMetal.get("gold") ?? 0) > 0 ? goldOutstanding : 0;
       const diamondOverdue = (dueDatesByMetal.get("diamond") ?? 0) > 0 ? diamondOutstanding : 0;
 
+      const signedDays = (dueDate: string | null): number | null => {
+        if (!dueDate) return null;
+        const today = new Date();
+        const now = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+        const due = new Date(`${dueDate}T00:00:00`).getTime();
+        return Math.floor((now - due) / (1000 * 60 * 60 * 24));
+      };
+
       return {
         row: {
           amountOutstanding: goldOutstanding + diamondOutstanding,
@@ -282,10 +294,12 @@ export async function getOutstandingStatement(customerId?: string, groupId?: str
           billNumber: bill.bill_number,
           customerName: getCustomerName(bill.customers),
           diamondDue: diamondOutstanding - diamondOverdue,
+          diamondDueDays: bill.diamond_amount && Number(bill.diamond_amount) > 0 ? signedDays(bill.diamond_due_date) : null,
           diamondOverdue,
           diamondOutstanding,
           entryType: "bill" as const,
           goldDue: goldOutstanding - goldOverdue,
+          goldDueDays: bill.gold_amount && Number(bill.gold_amount) > 0 ? signedDays(bill.gold_due_date) : null,
           goldOverdue,
           goldOutstanding,
         },
