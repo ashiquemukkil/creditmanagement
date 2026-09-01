@@ -1,7 +1,16 @@
+import { Suspense } from "react";
 import Link from "next/link";
 
 import { AgingChart } from "@/components/reports/aging-chart";
+import { AgingBucketFilters } from "@/components/reports/aging-bucket-filters";
+import { agingBucketLabels, DEFAULT_AGING_THRESHOLDS } from "@/lib/aging-buckets";
 import { getAgingReport } from "@/lib/reports";
+
+type AgingReportPageProps = {
+  searchParams: Promise<{
+    thresholds?: string;
+  }>;
+};
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -12,10 +21,23 @@ function formatCurrency(amount: number) {
   }).format(amount);
 }
 
-const buckets = ["current", "1-15", "16-30", "31-60", "60+"] as const;
+function parseThresholds(raw: string | undefined): number[] {
+  if (!raw) return DEFAULT_AGING_THRESHOLDS;
+  const parsed = raw
+    .split(",")
+    .map((s) => parseInt(s.trim(), 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return parsed.length > 0 ? parsed : DEFAULT_AGING_THRESHOLDS;
+}
 
-export default async function AgingReportPage() {
-  const report = await getAgingReport();
+export default async function AgingReportPage({ searchParams }: AgingReportPageProps) {
+  const { thresholds: rawThresholds } = await searchParams;
+  const thresholds = parseThresholds(rawThresholds);
+  const report = await getAgingReport(undefined, thresholds);
+  const buckets = report.bucketLabels;
+  const exportParams = new URLSearchParams();
+  if (rawThresholds) exportParams.set("thresholds", rawThresholds);
+  const exportHref = `/reports/aging-report/export${exportParams.size > 0 ? `?${exportParams.toString()}` : ""}`;
 
   return (
     <section className="space-y-6">
@@ -28,12 +50,16 @@ export default async function AgingReportPage() {
           </p>
         </div>
         <Link
-          href="/reports/aging-report/export"
+          href={exportHref}
           className="inline-flex rounded-2xl border border-stone-300 px-5 py-3 text-sm font-medium text-stone-950 transition hover:bg-stone-50"
         >
           Export CSV
         </Link>
       </div>
+
+      <Suspense>
+        <AgingBucketFilters thresholds={thresholds} />
+      </Suspense>
 
       <AgingChart data={report.chartData} />
 
@@ -54,7 +80,7 @@ export default async function AgingReportPage() {
           <tbody className="divide-y divide-stone-200">
             {report.rows.length === 0 ? (
               <tr>
-                <td className="px-5 py-8 text-stone-500" colSpan={12}>
+                <td className="px-5 py-8 text-stone-500" colSpan={buckets.length * 2 + 2}>
                   No outstanding balances found.
                 </td>
               </tr>
@@ -64,12 +90,12 @@ export default async function AgingReportPage() {
                   <td className="px-5 py-4 font-medium text-stone-950">{row.customerName}</td>
                   {buckets.map((bucket) => (
                     <td key={`${row.customerId}-${bucket}-gold`} className="px-5 py-4">
-                      {formatCurrency(row.buckets[bucket].gold)}
+                      {formatCurrency((row.buckets[bucket] ?? { gold: 0 }).gold)}
                     </td>
                   ))}
                   {buckets.map((bucket) => (
                     <td key={`${row.customerId}-${bucket}-diamond`} className="px-5 py-4">
-                      {formatCurrency(row.buckets[bucket].diamond)}
+                      {formatCurrency((row.buckets[bucket] ?? { diamond: 0 }).diamond)}
                     </td>
                   ))}
                   <td className="px-5 py-4 font-medium text-stone-950">

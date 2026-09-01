@@ -27,6 +27,11 @@ type RecentPaymentRow = {
   customer_id: string;
   id: string;
   notes: string | null;
+  payment_allocations:
+    | Array<{
+        amount_allocated: number;
+      }>
+    | null;
   payment_date: string;
 };
 
@@ -53,7 +58,9 @@ export async function getDashboardSnapshot(options: DashboardSnapshotOptions = {
         .overrideTypes<OutstandingBillRow[]>(),
       supabase
         .from("payments")
-        .select("id, customer_id, customer:customer_id(name), payment_date, amount, notes, created_at")
+        .select(
+          "id, customer_id, customer:customer_id(name), payment_date, amount, notes, created_at, payment_allocations(amount_allocated)",
+        )
         .order("created_at", { ascending: false })
         .overrideTypes<RecentPaymentRow[]>(),
     ]);
@@ -68,7 +75,8 @@ export async function getDashboardSnapshot(options: DashboardSnapshotOptions = {
 
   const outstandingBills = (bills ?? []) as OutstandingBillRow[];
   const recentPayments = (payments ?? []) as RecentPaymentRow[];
-  let totalOutstanding = 0;
+  let grossOutstanding = 0;
+  let totalAdvanceBalance = 0;
   let overdueBillCount = 0;
 
   const topOverdueMap = new Map<
@@ -95,7 +103,7 @@ export async function getDashboardSnapshot(options: DashboardSnapshotOptions = {
 
   outstandingBills.forEach((bill) => {
     const outstanding = billOutstandingTotalAmount(bill);
-    totalOutstanding += outstanding;
+    grossOutstanding += outstanding;
 
     if (outstanding <= 0) {
       return;
@@ -121,6 +129,16 @@ export async function getDashboardSnapshot(options: DashboardSnapshotOptions = {
     current.totalOutstanding += outstanding;
     topOverdueMap.set(bill.customer_id, current);
   });
+
+  recentPayments.forEach((payment) => {
+    const allocatedAmount = (payment.payment_allocations ?? []).reduce((sum, allocation) => {
+      return sum + Number(allocation.amount_allocated);
+    }, 0);
+
+    totalAdvanceBalance += Math.max(Number(payment.amount) - allocatedAmount, 0);
+  });
+
+  const totalOutstanding = Math.max(grossOutstanding - totalAdvanceBalance, 0);
 
   const activity = [...recentBills, ...recentPayments.map((payment) => ({
     amount: Number(payment.amount),

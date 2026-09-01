@@ -140,7 +140,7 @@ export default async function OutstandingStatementPage({ searchParams }: Outstan
             <div className="border-b border-stone-200 px-5 py-4">
               <h3 className="text-lg font-semibold text-stone-950">{selectedCustomer?.name ?? "All customers"}</h3>
             </div>
-            <table className="min-w-[1280px] divide-y divide-stone-200 text-sm">
+            <table className="min-w-[1480px] divide-y divide-stone-200 text-sm">
               <thead className="bg-stone-50 text-left text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
                 <tr>
                   <th className="px-5 py-4" rowSpan={2}>
@@ -152,10 +152,10 @@ export default async function OutstandingStatementPage({ searchParams }: Outstan
                   <th className="px-5 py-4" rowSpan={2}>
                     Date
                   </th>
-                  <th className="px-5 py-4 text-center" colSpan={3}>
+                  <th className="px-5 py-4 text-center" colSpan={4}>
                     Gold
                   </th>
-                  <th className="px-5 py-4 text-center" colSpan={3}>
+                  <th className="px-5 py-4 text-center" colSpan={4}>
                     Diamond
                   </th>
                   <th className="px-5 py-4" rowSpan={2}>
@@ -164,10 +164,12 @@ export default async function OutstandingStatementPage({ searchParams }: Outstan
                 </tr>
                 <tr>
                   <th className="px-5 py-3">Outstanding</th>
-                  <th className="px-5 py-3">Due</th>
+                  <th className="px-5 py-3">Due soon</th>
+                  <th className="px-5 py-3">Due days</th>
                   <th className="px-5 py-3">Overdue</th>
                   <th className="px-5 py-3">Outstanding</th>
-                  <th className="px-5 py-3">Due</th>
+                  <th className="px-5 py-3">Due soon</th>
+                  <th className="px-5 py-3">Due days</th>
                   <th className="px-5 py-3">Overdue</th>
                 </tr>
               </thead>
@@ -179,9 +181,11 @@ export default async function OutstandingStatementPage({ searchParams }: Outstan
                     <td className="px-5 py-4">{formatDate(row.billDate)}</td>
                     <td className="px-5 py-4 font-medium text-stone-950">{formatCurrency(row.goldOutstanding)}</td>
                     <td className="px-5 py-4">{formatCurrency(row.goldDue)}</td>
+                    <td className="px-5 py-4">{row.goldDueDays === null ? "—" : row.goldDueDays > 0 ? `${row.goldDueDays}d overdue` : row.goldDueDays === 0 ? "Today" : `${Math.abs(row.goldDueDays)}d left`}</td>
                     <td className="px-5 py-4">{formatCurrency(row.goldOverdue)}</td>
                     <td className="px-5 py-4 font-medium text-stone-950">{formatCurrency(row.diamondOutstanding)}</td>
                     <td className="px-5 py-4">{formatCurrency(row.diamondDue)}</td>
+                    <td className="px-5 py-4">{row.diamondDueDays === null ? "—" : row.diamondDueDays > 0 ? `${row.diamondDueDays}d overdue` : row.diamondDueDays === 0 ? "Today" : `${Math.abs(row.diamondDueDays)}d left`}</td>
                     <td className="px-5 py-4">{formatCurrency(row.diamondOverdue)}</td>
                     <td className="px-5 py-4 font-medium text-stone-950">{formatCurrency(row.amountOutstanding)}</td>
                   </tr>

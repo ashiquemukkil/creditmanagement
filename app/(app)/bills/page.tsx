@@ -212,13 +212,13 @@ export default async function BillsPage({ searchParams }: BillsPageProps) {
               <th className="px-5 py-4">Due dates</th>
               <th className="px-5 py-4">Days overdue</th>
               <th className="px-5 py-4">Status</th>
-              <th className="px-5 py-4">Actions</th>
+              {canCreate ? <th className="px-5 py-4">Actions</th> : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-200">
             {bills.length === 0 ? (
               <tr>
-                <td className="px-5 py-8 text-stone-500" colSpan={11}>
+                <td className="px-5 py-8 text-stone-500" colSpan={canCreate ? 10 : 9}>
                   No bills found for the current filters.
                 </td>
               </tr>
@@ -242,9 +242,19 @@ export default async function BillsPage({ searchParams }: BillsPageProps) {
                       {bill.status}
                     </span>
                   </td>
-                  <td className="px-5 py-4">
-                    {canCreate ? <DeleteBillButton billId={bill.id} billNumber={bill.bill_number} /> : <span className="text-stone-400">-</span>}
-                  </td>
+                  {canCreate ? (
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <Link
+                          href={`/bills/${bill.id}/edit`}
+                          className="text-sm font-medium text-stone-700 transition hover:text-amber-700"
+                        >
+                          Edit
+                        </Link>
+                        <DeleteBillButton billId={bill.id} billNumber={bill.bill_number} />
+                      </div>
+                    </td>
+                  ) : null}
                 </tr>
               ))
             )}

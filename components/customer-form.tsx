@@ -50,11 +50,20 @@ export function CustomerForm({
   const [groupCategory, setGroupCategory] = useState("");
   const [groupSubCategory, setGroupSubCategory] = useState("");
 
+  const mainCategoryOptions = Array.from(
+    new Set(groupList.map((group) => group.category.trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+
+  const [selectedMainCategory, setSelectedMainCategory] = useState("");
+
+  const resolvedCategory =
+    selectedMainCategory === "__new__" ? groupCategory.trim() : selectedMainCategory.trim();
+
   const handleGroupSubmit = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
 
-    if (!groupCategory.trim() || !groupSubCategory.trim()) {
-      showError("Please fill in both category and sub-category.");
+    if (!resolvedCategory || !groupSubCategory.trim()) {
+      showError("Please choose a main category and enter a sub-category.");
       return;
     }
 
@@ -62,7 +71,7 @@ export function CustomerForm({
 
     try {
       const formData = new FormData();
-      formData.set("category", groupCategory.trim());
+      formData.set("category", resolvedCategory);
       formData.set("sub_category", groupSubCategory.trim());
 
       const result = await createGroupAction(formData);
@@ -77,13 +86,14 @@ export function CustomerForm({
 
       const newGroup: Group = {
         id: (result.data as { id: string })?.id,
-        category: groupCategory.trim(),
+        category: resolvedCategory,
         sub_category: groupSubCategory.trim(),
       };
 
       setGroupList([...groupList, newGroup]);
       setSelectedGroupId(newGroup.id);
       setShowGroupForm(false);
+      setSelectedMainCategory("");
       setGroupCategory("");
       setGroupSubCategory("");
       setIsGroupPending(false);
@@ -198,15 +208,40 @@ export function CustomerForm({
             <h3 className="text-sm font-semibold text-stone-900">Create New Group</h3>
 
             <label className="block space-y-1 text-sm font-medium text-stone-700">
-              <span>Category</span>
-              <input
-                type="text"
-                placeholder="e.g., Gold, Diamond, Silver"
-                value={groupCategory}
-                onChange={(e) => setGroupCategory(e.target.value)}
+              <span>Main category</span>
+              <select
+                value={selectedMainCategory}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSelectedMainCategory(value);
+                  if (value !== "__new__") {
+                    setGroupCategory("");
+                  }
+                }}
                 className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-950 outline-none transition focus:border-amber-600"
-              />
+              >
+                <option value="">Select main category...</option>
+                {mainCategoryOptions.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+                <option value="__new__">+ Create new main category</option>
+              </select>
             </label>
+
+            {selectedMainCategory === "__new__" && (
+              <label className="block space-y-1 text-sm font-medium text-stone-700">
+                <span>New main category name</span>
+                <input
+                  type="text"
+                  placeholder="e.g., Gold, Diamond, Silver"
+                  value={groupCategory}
+                  onChange={(e) => setGroupCategory(e.target.value)}
+                  className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-950 outline-none transition focus:border-amber-600"
+                />
+              </label>
+            )}
 
             <label className="block space-y-1 text-sm font-medium text-stone-700">
               <span>Sub-category</span>
@@ -232,6 +267,7 @@ export function CustomerForm({
                 type="button"
                 onClick={() => {
                   setShowGroupForm(false);
+                  setSelectedMainCategory("");
                   setGroupCategory("");
                   setGroupSubCategory("");
                 }}

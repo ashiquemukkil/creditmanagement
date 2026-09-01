@@ -9,8 +9,11 @@ import {
   billTotalAmount,
 } from "@/lib/bills";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { agingBucketLabels, DEFAULT_AGING_THRESHOLDS } from "@/lib/aging-buckets";
 
-export type AgingBucket = "current" | "1-15" | "16-30" | "31-60" | "60+";
+export type AgingBucket = string;
+
+export { agingBucketLabels, DEFAULT_AGING_THRESHOLDS } from "@/lib/aging-buckets";
 
 export type OutstandingStatementRow = {
   amountOutstanding: number;
@@ -19,15 +22,18 @@ export type OutstandingStatementRow = {
   billDate: string;
   customerName: string;
   diamondDue: number;
+  diamondDueDays: number | null;
   diamondOverdue: number;
   diamondOutstanding: number;
+  entryType: "bill" | "advance";
   goldDue: number;
+  goldDueDays: number | null;
   goldOverdue: number;
   goldOutstanding: number;
 };
 
 export type AgingCustomerRow = {
-  buckets: Record<AgingBucket, { diamond: number; gold: number }>;
+  buckets: Record<string, { diamond: number; gold: number }>;
   customerId: string;
   customerName: string;
   totalOutstanding: number;
@@ -102,6 +108,20 @@ type BillReportRow = {
   customers: { name: string } | Array<{ name: string }> | null;
 };
 
+type PaymentAdvanceReportRow = {
+  amount: number;
+  created_at: string;
+  customer_id: string;
+  customers: { name: string } | Array<{ name: string }> | null;
+  id: string;
+  payment_allocations:
+    | Array<{
+        amount_allocated: number;
+      }>
+    | null;
+  payment_date: string;
+};
+
 function getCustomerName(customers: { name: string } | Array<{ name: string }> | null | undefined) {
   if (!customers) {
     return "Unknown customer";
@@ -110,42 +130,31 @@ function getCustomerName(customers: { name: string } | Array<{ name: string }> |
   return Array.isArray(customers) ? (customers[0]?.name ?? "Unknown customer") : customers.name;
 }
 
-function emptyBuckets(): Record<AgingBucket, { diamond: number; gold: number }> {
-  return {
-    "1-15": { diamond: 0, gold: 0 },
-    "16-30": { diamond: 0, gold: 0 },
-    "31-60": { diamond: 0, gold: 0 },
-    "60+": { diamond: 0, gold: 0 },
-    current: { diamond: 0, gold: 0 },
-  };
+function emptyBuckets(thresholds: number[]): Record<string, { diamond: number; gold: number }> {
+  return Object.fromEntries(agingBucketLabels(thresholds).map((label) => [label, { diamond: 0, gold: 0 }]));
 }
 
-function bucketForDaysOverdue(daysOverdue: number): AgingBucket {
-  if (daysOverdue <= 0) {
-    return "current";
+function bucketForDaysOverdue(daysOverdue: number, thresholds: number[]): string {
+  if (daysOverdue <= 0) return "current";
+
+  const sorted = [...thresholds].map(Number).filter((n) => Number.isFinite(n) && n > 0).sort((a, b) => a - b);
+  let prev = 0;
+
+  for (const t of sorted) {
+    if (daysOverdue <= t) return `${prev + 1}-${t}`;
+    prev = t;
   }
 
-  if (daysOverdue <= 15) {
-    return "1-15";
-  }
-
-  if (daysOverdue <= 30) {
-    return "16-30";
-  }
-
-  if (daysOverdue <= 60) {
-    return "31-60";
-  }
-
-  return "60+";
+  return `${prev}+`;
 }
 
 async function listOutstandingBillsBase(customerId?: string, groupId?: string) {
   const supabase = await createSupabaseServerClient();
+  const customerRelation = groupId ? "customers!inner(name, group_id)" : "customers(name, group_id)";
   let query = supabase
     .from("bills")
     .select(
-      "id, customer_id, bill_number, bill_date, gold_amount, diamond_amount, gold_due_date, diamond_due_date, due_date, amount_paid_gold, amount_paid_diamond, status, created_at, customers(name, group_id)",
+      `id, customer_id, bill_number, bill_date, gold_amount, diamond_amount, gold_due_date, diamond_due_date, due_date, amount_paid_gold, amount_paid_diamond, status, created_at, ${customerRelation}`,
     )
     .in("status", ["open", "partial"]);
 
@@ -166,11 +175,94 @@ async function listOutstandingBillsBase(customerId?: string, groupId?: string) {
   return (data ?? []) as BillReportRow[];
 }
 
+async function listAdvancePaymentEntries(customerId?: string, groupId?: string): Promise<OutstandingStatementRow[]> {
+  const supabase = await createSupabaseServerClient();
+  const customerRelation = groupId ? "customers!inner(name, group_id)" : "customers(name, group_id)";
+  let query = supabase
+    .from("payments")
+    .select(
+      `id, customer_id, payment_date, amount, created_at, ${customerRelation}, payment_allocations(amount_allocated)`,
+    );
+
+  if (customerId) {
+    query = query.eq("customer_id", customerId);
+  }
+
+  if (groupId) {
+    query = query.eq("customers.group_id", groupId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  const advanceByCustomer = new Map<
+    string,
+    {
+      amount: number;
+      customerName: string;
+      latestDate: string;
+    }
+  >();
+
+  ((data ?? []) as PaymentAdvanceReportRow[]).forEach((payment) => {
+    const allocatedAmount = (payment.payment_allocations ?? []).reduce(
+      (sum, allocation) => sum + Number(allocation.amount_allocated),
+      0,
+    );
+    const unallocatedAmount = Math.max(Number(payment.amount) - allocatedAmount, 0);
+
+    if (unallocatedAmount <= 0) {
+      return;
+    }
+
+    const existing = advanceByCustomer.get(payment.customer_id);
+
+    if (!existing) {
+      advanceByCustomer.set(payment.customer_id, {
+        amount: unallocatedAmount,
+        customerName: getCustomerName(payment.customers),
+        latestDate: payment.payment_date,
+      });
+
+      return;
+    }
+
+    advanceByCustomer.set(payment.customer_id, {
+      amount: existing.amount + unallocatedAmount,
+      customerName: existing.customerName,
+      latestDate: payment.payment_date > existing.latestDate ? payment.payment_date : existing.latestDate,
+    });
+  });
+
+  return Array.from(advanceByCustomer.entries()).map(([customerIdKey, summary]) => ({
+    amountOutstanding: -summary.amount,
+    billDate: summary.latestDate,
+    billId: `advance-${customerIdKey}`,
+    billNumber: "ADVANCE PAYMENT",
+    customerName: summary.customerName,
+    diamondDue: 0,
+    diamondDueDays: null,
+    diamondOverdue: 0,
+    diamondOutstanding: 0,
+    entryType: "advance",
+    goldDue: 0,
+    goldDueDays: null,
+    goldOverdue: 0,
+    goldOutstanding: 0,
+  }));
+}
+
 export async function getOutstandingStatement(customerId?: string, groupId?: string) {
-  const rows = await listOutstandingBillsBase(customerId, groupId);
+  const [rows, advanceRows] = await Promise.all([
+    listOutstandingBillsBase(customerId, groupId),
+    listAdvancePaymentEntries(customerId, groupId),
+  ]);
   const dueDateSortByBillId = new Map(rows.map((bill) => [bill.id, billDueDateSortValue(bill) ?? ""]));
 
-  const statementRows = rows
+  const billStatementRows = rows
     .map((bill) => {
       const goldOutstanding = billOutstandingGoldAmount(bill);
       const diamondOutstanding = billOutstandingDiamondAmount(bill);
@@ -178,6 +270,14 @@ export async function getOutstandingStatement(customerId?: string, groupId?: str
       const dueDatesByMetal = new Map(dueDateEntries.map((entry) => [entry.metal, entry.daysOverdue]));
       const goldOverdue = (dueDatesByMetal.get("gold") ?? 0) > 0 ? goldOutstanding : 0;
       const diamondOverdue = (dueDatesByMetal.get("diamond") ?? 0) > 0 ? diamondOutstanding : 0;
+
+      const signedDays = (dueDate: string | null): number | null => {
+        if (!dueDate) return null;
+        const today = new Date();
+        const now = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+        const due = new Date(`${dueDate}T00:00:00`).getTime();
+        return Math.floor((now - due) / (1000 * 60 * 60 * 24));
+      };
 
       return {
         row: {
@@ -187,16 +287,28 @@ export async function getOutstandingStatement(customerId?: string, groupId?: str
           billNumber: bill.bill_number,
           customerName: getCustomerName(bill.customers),
           diamondDue: diamondOutstanding - diamondOverdue,
+          diamondDueDays: bill.diamond_amount && Number(bill.diamond_amount) > 0 ? signedDays(bill.diamond_due_date) : null,
           diamondOverdue,
           diamondOutstanding,
+          entryType: "bill" as const,
           goldDue: goldOutstanding - goldOverdue,
+          goldDueDays: bill.gold_amount && Number(bill.gold_amount) > 0 ? signedDays(bill.gold_due_date) : null,
           goldOverdue,
           goldOutstanding,
         },
+        sortDate: dueDateSortByBillId.get(bill.id) ?? "",
         maxDaysOverdue: Math.max(dueDatesByMetal.get("gold") ?? 0, dueDatesByMetal.get("diamond") ?? 0),
       };
     })
     .filter((bill) => bill.row.amountOutstanding > 0);
+
+  const advanceStatementRows = advanceRows.map((row) => ({
+    row,
+    sortDate: row.billDate,
+    maxDaysOverdue: -1,
+  }));
+
+  const statementRows = [...billStatementRows, ...advanceStatementRows];
 
   return statementRows
     .sort((left, right) => {
@@ -204,18 +316,15 @@ export async function getOutstandingStatement(customerId?: string, groupId?: str
         return right.maxDaysOverdue - left.maxDaysOverdue;
       }
 
-      const leftSortDate = dueDateSortByBillId.get(left.row.billId) ?? "";
-      const rightSortDate = dueDateSortByBillId.get(right.row.billId) ?? "";
-
-      return leftSortDate.localeCompare(rightSortDate);
+      return left.sortDate.localeCompare(right.sortDate);
     })
     .map((bill) => bill.row);
 }
 
-export async function getAgingReport(groupId?: string) {
+export async function getAgingReport(groupId?: string, thresholds: number[] = DEFAULT_AGING_THRESHOLDS) {
   const rows = await listOutstandingBillsBase(undefined, groupId);
   const customerMap = new Map<string, AgingCustomerRow>();
-  const bucketTotals = emptyBuckets();
+  const bucketTotals = emptyBuckets(thresholds);
 
   rows.forEach((bill) => {
     const goldOutstanding = billOutstandingGoldAmount(bill);
@@ -229,7 +338,7 @@ export async function getAgingReport(groupId?: string) {
     const row =
       customerMap.get(bill.customer_id) ??
       {
-        buckets: emptyBuckets(),
+        buckets: emptyBuckets(thresholds),
         customerId: bill.customer_id,
         customerName: getCustomerName(bill.customers),
         totalOutstanding: 0,
@@ -242,14 +351,14 @@ export async function getAgingReport(groupId?: string) {
     const dueDateByMetal = new Map(dueDateEntries.map((entry) => [entry.metal, entry.daysOverdue]));
 
     if (goldOutstanding > 0 && bill.gold_due_date) {
-      const goldBucket = bucketForDaysOverdue(dueDateByMetal.get("gold") ?? 0);
+      const goldBucket = bucketForDaysOverdue(dueDateByMetal.get("gold") ?? 0, thresholds);
 
       row.buckets[goldBucket].gold += goldOutstanding;
       bucketTotals[goldBucket].gold += goldOutstanding;
     }
 
     if (diamondOutstanding > 0 && bill.diamond_due_date) {
-      const diamondBucket = bucketForDaysOverdue(dueDateByMetal.get("diamond") ?? 0);
+      const diamondBucket = bucketForDaysOverdue(dueDateByMetal.get("diamond") ?? 0, thresholds);
 
       row.buckets[diamondBucket].diamond += diamondOutstanding;
       bucketTotals[diamondBucket].diamond += diamondOutstanding;
@@ -259,13 +368,15 @@ export async function getAgingReport(groupId?: string) {
   const rowsForTable = Array.from(customerMap.values()).sort(
     (left, right) => right.totalOutstanding - left.totalOutstanding,
   );
-  const chartData = (Object.keys(bucketTotals) as AgingBucket[]).map((bucket) => ({
+  const bucketLabels = agingBucketLabels(thresholds);
+  const chartData = bucketLabels.map((bucket) => ({
     bucket,
     diamond: bucketTotals[bucket].diamond,
     gold: bucketTotals[bucket].gold,
   }));
 
   return {
+    bucketLabels,
     chartData,
     rows: rowsForTable,
   };
